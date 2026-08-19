@@ -1,0 +1,32 @@
+# .NET
+bin/
+obj/
+**/bin/
+**/obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# Build
+Debug/
+Release/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+
+# Environment / secrets
+.env
+.env.*
+!.env.example

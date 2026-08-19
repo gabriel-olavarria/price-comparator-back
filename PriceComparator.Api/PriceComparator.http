@@ -1,0 +1,24 @@
+@host = http://localhost:5169
+
+### BUSCAR COCA COLA EN LIDER, JUMBO Y UNIMARC
+# Ejemplo: coca cola
+GET {{host}}/api/product-offers/search?query=coca%20cola
+Accept: application/json
+###
+
+### BUSCAR COCA COLA EN LIDER Y JUMBO
+# Ejemplo: pepsi
+GET {{host}}/api/product-offers/search?query=pepsi
+Accept: application/json
+###
+
+### OBTENER POR NOMBRE Y VARIAS CATEGORÍAS
+# Ejemplo: coca cola + Bebidas + Gaseosas
+GET {{host}}/api/product-offers/search?query=coca%20cola&categories=Bebidas&categories=Gaseosas
+Accept: application/json
+###
+
+### OBTENER SOLO POR CATEGORÍA
+# Ejemplo: Bebidas
+GET {{host}}/api/product-offers/search?categories=Bebidas
+###
