@@ -7,37 +7,60 @@ public sealed class FileSnapshotStore : ISnapshotStore
 {
     private readonly string _rootDirectory;
 
-    public FileSnapshotStore(IConfiguration configuration, IHostEnvironment environment)
+    public FileSnapshotStore(
+        IConfiguration configuration,
+        IHostEnvironment environment)
     {
         var configuredPath = configuration["Snapshots:RootPath"];
 
         if (string.IsNullOrWhiteSpace(configuredPath))
         {
-            throw new InvalidOperationException("No se configuró Snapshots:RootPath.");
+            throw new InvalidOperationException(
+                "No se configuró Snapshots:RootPath.");
         }
 
-        _rootDirectory = Path.GetFullPath(Path.Combine(environment.ContentRootPath, configuredPath));
+        _rootDirectory = Path.GetFullPath(
+            Path.Combine(
+                environment.ContentRootPath,
+                configuredPath));
+
         Directory.CreateDirectory(_rootDirectory);
-        Console.WriteLine($"[SNAPSHOT] Root directory: {_rootDirectory}");
+
+        Console.WriteLine(
+            $"[SNAPSHOT] Root directory: {_rootDirectory}");
     }
 
-    public async Task<string?> GetAsync(string storeCode, string query, CancellationToken cancellationToken = default)
+    public async Task SaveAsync(
+        string storeCode,
+        string query,
+        string html,
+        CancellationToken cancellationToken = default)
     {
-        var filePath = GetFilePath(storeCode, query);
-
-        if (!File.Exists(filePath))
+        if (string.IsNullOrWhiteSpace(storeCode))
         {
-            Console.WriteLine($"[SNAPSHOT] No encontrado: {filePath}");
-            return null;
+            throw new ArgumentException(
+                "El código de la tienda es obligatorio.",
+                nameof(storeCode));
         }
 
-        Console.WriteLine($"[SNAPSHOT] Leyendo: {filePath}");
-        return await File.ReadAllTextAsync(filePath, cancellationToken);
-    }
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            throw new ArgumentException(
+                "La búsqueda es obligatoria.",
+                nameof(query));
+        }
 
-    public async Task SaveAsync(string storeCode, string query, string html, CancellationToken cancellationToken = default)
-    {
-        var filePath = GetFilePath(storeCode, query);
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            throw new ArgumentException(
+                "El HTML no puede estar vacío.",
+                nameof(html));
+        }
+
+        var filePath = GetFilePath(
+            storeCode,
+            query);
+
         var directory = Path.GetDirectoryName(filePath);
 
         if (!string.IsNullOrWhiteSpace(directory))
@@ -45,27 +68,52 @@ public sealed class FileSnapshotStore : ISnapshotStore
             Directory.CreateDirectory(directory);
         }
 
-        Console.WriteLine($"[SNAPSHOT] Guardando: {filePath}");
+        Console.WriteLine(
+            $"[SNAPSHOT] Guardando: {filePath}");
 
-        await File.WriteAllTextAsync(filePath, html, cancellationToken);
+        await File.WriteAllTextAsync(
+            filePath,
+            html,
+            cancellationToken);
 
-        Console.WriteLine($"[SNAPSHOT] Guardado: {File.Exists(filePath)}");
+        Console.WriteLine(
+            $"[SNAPSHOT] Snapshot guardado correctamente.");
     }
 
-    private string GetFilePath(string storeCode, string query)
+    private string GetFilePath(
+        string storeCode,
+        string query)
     {
-        var fileName = NormalizeQuery(query);
+        var normalizedStoreCode =
+            NormalizeFileName(storeCode);
 
-        return Path.Combine(_rootDirectory, storeCode, $"{fileName}.html");
+        var normalizedQuery =
+            NormalizeFileName(query);
+
+        var timestamp = DateTime.Now
+            .ToString("yyyy-MM-dd_HH-mm-ss");
+
+        var fileName =
+            $"{normalizedQuery}_{timestamp}.html";
+
+        return Path.Combine(
+            _rootDirectory,
+            normalizedStoreCode,
+            fileName);
     }
 
-    private static string NormalizeQuery(string query)
+    private static string NormalizeFileName(string value)
     {
-        var normalized = query.Trim().ToLowerInvariant();
+        var normalized = value
+            .Trim()
+            .ToLowerInvariant();
 
-        foreach (var invalidCharacter in Path.GetInvalidFileNameChars())
+        foreach (var invalidCharacter
+                 in Path.GetInvalidFileNameChars())
         {
-            normalized = normalized.Replace(invalidCharacter, '-');
+            normalized = normalized.Replace(
+                invalidCharacter,
+                '-');
         }
 
         return normalized.Replace(' ', '-');
