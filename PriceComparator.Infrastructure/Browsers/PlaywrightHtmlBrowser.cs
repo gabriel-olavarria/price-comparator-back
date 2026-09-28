@@ -5,8 +5,10 @@ namespace PriceComparator.Infrastructure.Browsers;
 public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
 {
     private IPlaywright? _playwright;
-    private IBrowserContext? _context;
-    private IPage? _page;
+
+    // Solo se mantienen vivos en Development.
+    private IBrowserContext? _developmentContext;
+    private IPage? _developmentPage;
 
     private readonly SemaphoreSlim _lock = new(1, 1);
 
@@ -20,13 +22,75 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
 
         try
         {
-            await EnsureInitializedAsync();
+            if (IsProduction())
+            {
+                return await GetProductionHtmlAsync(
+                    url,
+                    cancellationToken,
+                    waitAfterLoadMs);
+            }
 
-            _page = await GetOrCreatePageAsync();
+            return await GetDevelopmentHtmlAsync(
+                url,
+                cancellationToken,
+                waitAfterLoadMs,
+                keepPageOpenMs);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
 
-            Console.WriteLine($"[PLAYWRIGHT] Navegando: {url}");
+    // ============================================================
+    // PRODUCTION
+    // ============================================================
 
-            await _page.GotoAsync(
+    private async Task<string> GetProductionHtmlAsync(
+        string url,
+        CancellationToken cancellationToken,
+        int waitAfterLoadMs)
+    {
+        await EnsurePlaywrightAsync();
+
+        Console.WriteLine(
+            "[PLAYWRIGHT] Production - iniciando Chromium headless.");
+
+        await using var browser =
+            await _playwright!.Chromium.LaunchAsync(
+                new BrowserTypeLaunchOptions
+                {
+                    Headless = true,
+
+                    Args =
+                    [
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                        "--disable-extensions",
+                        "--disable-background-networking"
+                    ]
+                });
+
+        await using var context =
+            await browser.NewContextAsync(
+                new BrowserNewContextOptions
+                {
+                    ViewportSize = new ViewportSize
+                    {
+                        Width = 1366,
+                        Height = 768
+                    }
+                });
+
+        var page = await context.NewPageAsync();
+
+        try
+        {
+            Console.WriteLine(
+                $"[PLAYWRIGHT] Navegando: {url}");
+
+            await page.GotoAsync(
                 url,
                 new PageGotoOptions
                 {
@@ -35,34 +99,16 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
                 });
 
             Console.WriteLine(
-                $"[PLAYWRIGHT] URL final: {_page.Url}");
+                $"[PLAYWRIGHT] URL final: {page.Url}");
 
-            var isBlocked = await IsBlockedPageAsync(_page);
-
-            if (isBlocked)
+            if (await IsBlockedPageAsync(page))
             {
-                if (IsProduction())
-                {
-                    throw new InvalidOperationException(
-                        $"El sitio bloqueó la navegación de Playwright. URL: {_page.Url}");
-                }
-
-                Console.WriteLine(
-                    "[PLAYWRIGHT] El sitio solicitó verificación manual.");
-
-                Console.WriteLine(
-                    "[PLAYWRIGHT] Completa la verificación en la ventana del navegador.");
-
-                await WaitForManualVerificationAsync(
-                    _page,
-                    cancellationToken);
-
-                Console.WriteLine(
-                    $"[PLAYWRIGHT] URL después de verificar: {_page.Url}");
+                throw new InvalidOperationException(
+                    $"El sitio bloqueó la navegación de Playwright. URL: {page.Url}");
             }
 
             await WaitForNextDataAsync(
-                _page,
+                page,
                 cancellationToken);
 
             if (waitAfterLoadMs > 0)
@@ -75,54 +121,128 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
                     cancellationToken);
             }
 
-            var html = await _page.ContentAsync();
+            var html = await page.ContentAsync();
 
             Console.WriteLine(
                 $"[PLAYWRIGHT] HTML obtenido. Tamaño: {html.Length} caracteres.");
 
-            await SaveHtmlAsync(
-                html,
-                _page.Url,
-                cancellationToken);
-
-            /*
-             * En producción no tiene sentido mantener una ventana
-             * "visible", ya que Chromium funciona en modo headless.
-             */
-            if (!IsProduction() && keepPageOpenMs > 0)
-            {
-                Console.WriteLine(
-                    $"[PLAYWRIGHT] Manteniendo página visible {keepPageOpenMs} ms...");
-
-                await WaitAsync(
-                    keepPageOpenMs,
-                    cancellationToken);
-            }
+            Console.WriteLine(
+                "[PLAYWRIGHT] Production - HTML de diagnóstico no será guardado.");
 
             return html;
         }
         finally
         {
-            _lock.Release();
+            await page.CloseAsync();
+
+            Console.WriteLine(
+                "[PLAYWRIGHT] Production - página, contexto y navegador liberados.");
         }
     }
 
-    private async Task EnsureInitializedAsync()
+    // ============================================================
+    // DEVELOPMENT
+    // ============================================================
+
+    private async Task<string> GetDevelopmentHtmlAsync(
+        string url,
+        CancellationToken cancellationToken,
+        int waitAfterLoadMs,
+        int keepPageOpenMs)
     {
-        if (_context is not null)
+        await EnsureDevelopmentContextAsync();
+
+        var page = await GetOrCreateDevelopmentPageAsync();
+
+        Console.WriteLine(
+            $"[PLAYWRIGHT] Navegando: {url}");
+
+        await page.GotoAsync(
+            url,
+            new PageGotoOptions
+            {
+                WaitUntil = WaitUntilState.DOMContentLoaded,
+                Timeout = 60000
+            });
+
+        Console.WriteLine(
+            $"[PLAYWRIGHT] URL final: {page.Url}");
+
+        if (await IsBlockedPageAsync(page))
+        {
+            Console.WriteLine(
+                "[PLAYWRIGHT] El sitio solicitó verificación manual.");
+
+            Console.WriteLine(
+                "[PLAYWRIGHT] Completa la verificación en la ventana del navegador.");
+
+            await WaitForManualVerificationAsync(
+                page,
+                cancellationToken);
+
+            Console.WriteLine(
+                $"[PLAYWRIGHT] URL después de verificar: {page.Url}");
+        }
+
+        await WaitForNextDataAsync(
+            page,
+            cancellationToken);
+
+        if (waitAfterLoadMs > 0)
+        {
+            Console.WriteLine(
+                $"[PLAYWRIGHT] Esperando {waitAfterLoadMs} ms para contenido dinámico...");
+
+            await WaitAsync(
+                waitAfterLoadMs,
+                cancellationToken);
+        }
+
+        var html = await page.ContentAsync();
+
+        Console.WriteLine(
+            $"[PLAYWRIGHT] HTML obtenido. Tamaño: {html.Length} caracteres.");
+
+        // Solo guardamos HTML para diagnóstico local.
+        await SaveHtmlAsync(
+            html,
+            page.Url,
+            cancellationToken);
+
+        if (keepPageOpenMs > 0)
+        {
+            Console.WriteLine(
+                $"[PLAYWRIGHT] Manteniendo página visible {keepPageOpenMs} ms...");
+
+            await WaitAsync(
+                keepPageOpenMs,
+                cancellationToken);
+        }
+
+        return html;
+    }
+
+    private async Task EnsurePlaywrightAsync()
+    {
+        if (_playwright is not null)
         {
             return;
         }
 
         _playwright = await Playwright.CreateAsync();
 
-        var isProduction = IsProduction();
-
         Console.WriteLine(
-            $"[PLAYWRIGHT] Entorno: {(isProduction ? "Production" : "Development")}");
+            "[PLAYWRIGHT] Playwright inicializado.");
+    }
 
-        Console.WriteLine(
-            $"[PLAYWRIGHT] Headless: {isProduction}");
+    private async Task EnsureDevelopmentContextAsync()
+    {
+        if (_developmentContext is not null)
+        {
+            return;
+        }
+
+        await EnsurePlaywrightAsync();
 
         var userDataDirectory = Path.Combine(
             Environment.GetFolderPath(
@@ -135,84 +255,59 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
         Console.WriteLine(
             $"[PLAYWRIGHT] Perfil persistente: {userDataDirectory}");
 
-        var launchOptions =
-            new BrowserTypeLaunchPersistentContextOptions
-            {
-                /*
-                 * LOCAL:
-                 * navegador visible para poder inspeccionarlo
-                 * y completar una verificación manual.
-                 *
-                 * PRODUCTION:
-                 * navegador headless porque Render no tiene GUI.
-                 */
-                Headless = isProduction,
+        _developmentContext =
+            await _playwright!.Chromium.LaunchPersistentContextAsync(
+                userDataDirectory,
+                new BrowserTypeLaunchPersistentContextOptions
+                {
+                    Headless = false,
+                    ViewportSize = null,
 
-                ViewportSize = isProduction
-                    ? new ViewportSize
-                    {
-                        Width = 1920,
-                        Height = 1080
-                    }
-                    : null,
-
-                Args = isProduction
-                    ?
-                    [
-                        "--no-sandbox",
-                        "--disable-dev-shm-usage"
-                    ]
-                    :
+                    Args =
                     [
                         "--start-maximized"
                     ]
-            };
-
-        _context =
-            await _playwright.Chromium.LaunchPersistentContextAsync(
-                userDataDirectory,
-                launchOptions);
+                });
 
         Console.WriteLine(
             "[PLAYWRIGHT] Contexto persistente iniciado.");
 
-        _page = await GetOrCreatePageAsync();
+        _developmentPage =
+            await GetOrCreateDevelopmentPageAsync();
     }
 
-    private async Task<IPage> GetOrCreatePageAsync()
+    private async Task<IPage> GetOrCreateDevelopmentPageAsync()
     {
-        if (_page is not null && !_page.IsClosed)
+        if (_developmentPage is not null &&
+            !_developmentPage.IsClosed)
         {
-            return _page;
+            return _developmentPage;
         }
 
-        if (_context is null)
+        if (_developmentContext is null)
         {
             throw new InvalidOperationException(
                 "El contexto de Playwright no está inicializado.");
         }
 
-        var pages = _context.Pages;
+        var pages = _developmentContext.Pages;
 
         if (pages.Count > 0)
         {
-            _page = pages[0];
+            _developmentPage = pages[0];
 
-            return _page;
+            return _developmentPage;
         }
 
-        _page = await _context.NewPageAsync();
+        _developmentPage =
+            await _developmentContext.NewPageAsync();
 
-        return _page;
+        return _developmentPage;
     }
 
     private static async Task<bool> IsBlockedPageAsync(
         IPage page)
     {
-        /*
-         * Caso 1:
-         * bloqueo explícito mediante URL.
-         */
         if (page.Url.Contains(
                 "/blocked",
                 StringComparison.OrdinalIgnoreCase))
@@ -223,11 +318,6 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
             return true;
         }
 
-        /*
-         * Caso 2:
-         * PerimeterX puede responder HTTP 200 manteniendo
-         * la URL original, pero mostrando un CAPTCHA.
-         */
         var html = await page.ContentAsync();
 
         var robotOrHuman = html.Contains(
@@ -241,7 +331,7 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
         if (robotOrHuman || pxCaptcha)
         {
             Console.WriteLine(
-                "[PLAYWRIGHT] Challenge/CAPTCHA detectado en el HTML.");
+                "[PLAYWRIGHT] Challenge/CAPTCHA detectado.");
 
             Console.WriteLine(
                 $"[PLAYWRIGHT] Robot or human: {robotOrHuman}");
@@ -268,9 +358,7 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var blocked = await IsBlockedPageAsync(page);
-
-            if (!blocked)
+            if (!await IsBlockedPageAsync(page))
             {
                 Console.WriteLine(
                     "[PLAYWRIGHT] Verificación manual completada.");
@@ -314,14 +402,10 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
             Console.WriteLine(
                 $"[PLAYWRIGHT] No se encontró __NEXT_DATA__. URL actual: {page.Url}");
 
-            /*
-             * Antes de propagar el timeout revisamos si
-             * terminamos en una página de challenge.
-             */
             if (await IsBlockedPageAsync(page))
             {
                 Console.WriteLine(
-                    "[PLAYWRIGHT] El timeout ocurrió porque el sitio presentó un challenge.");
+                    "[PLAYWRIGHT] El sitio presentó un challenge.");
             }
 
             throw;
@@ -350,8 +434,8 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
             pageName = "index";
         }
 
-        var timestamp = DateTime.Now
-            .ToString("yyyyMMdd-HHmmss");
+        var timestamp =
+            DateTime.Now.ToString("yyyyMMdd-HHmmss");
 
         var fileName =
             $"{pageName}-{timestamp}.html";
@@ -395,20 +479,21 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         Console.WriteLine(
-            "[PLAYWRIGHT] Cerrando navegador...");
+            "[PLAYWRIGHT] Liberando recursos...");
 
-        if (_page is not null && !_page.IsClosed)
+        if (_developmentPage is not null &&
+            !_developmentPage.IsClosed)
         {
-            await _page.CloseAsync();
+            await _developmentPage.CloseAsync();
 
-            _page = null;
+            _developmentPage = null;
         }
 
-        if (_context is not null)
+        if (_developmentContext is not null)
         {
-            await _context.CloseAsync();
+            await _developmentContext.CloseAsync();
 
-            _context = null;
+            _developmentContext = null;
         }
 
         _playwright?.Dispose();
@@ -418,6 +503,6 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
         _lock.Dispose();
 
         Console.WriteLine(
-            "[PLAYWRIGHT] Navegador cerrado.");
+            "[PLAYWRIGHT] Recursos liberados.");
     }
 }
