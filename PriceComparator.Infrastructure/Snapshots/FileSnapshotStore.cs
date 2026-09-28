@@ -6,11 +6,14 @@ namespace PriceComparator.Infrastructure.Snapshots;
 public sealed class FileSnapshotStore : ISnapshotStore
 {
     private readonly string _rootDirectory;
+    private readonly bool _isProduction;
 
     public FileSnapshotStore(
         IConfiguration configuration,
         IHostEnvironment environment)
     {
+        _isProduction = environment.IsProduction();
+
         var configuredPath = configuration["Snapshots:RootPath"];
 
         if (string.IsNullOrWhiteSpace(configuredPath))
@@ -24,10 +27,22 @@ public sealed class FileSnapshotStore : ISnapshotStore
                 environment.ContentRootPath,
                 configuredPath));
 
-        Directory.CreateDirectory(_rootDirectory);
+        /*
+         * Los snapshots son únicamente para desarrollo/diagnóstico.
+         * En Production no creamos directorios ni archivos.
+         */
+        if (!_isProduction)
+        {
+            Directory.CreateDirectory(_rootDirectory);
 
-        Console.WriteLine(
-            $"[SNAPSHOT] Root directory: {_rootDirectory}");
+            Console.WriteLine(
+                $"[SNAPSHOT] Root directory: {_rootDirectory}");
+        }
+        else
+        {
+            Console.WriteLine(
+                "[SNAPSHOT] Production - guardado de snapshots deshabilitado.");
+        }
     }
 
     public async Task SaveAsync(
@@ -36,6 +51,18 @@ public sealed class FileSnapshotStore : ISnapshotStore
         string html,
         CancellationToken cancellationToken = default)
     {
+        /*
+         * En Production ignoramos cualquier intento de guardar
+         * snapshots realizado por los searchers.
+         */
+        if (_isProduction)
+        {
+            Console.WriteLine(
+                $"[SNAPSHOT] Production - snapshot omitido para {storeCode}.");
+
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(storeCode))
         {
             throw new ArgumentException(
@@ -77,7 +104,7 @@ public sealed class FileSnapshotStore : ISnapshotStore
             cancellationToken);
 
         Console.WriteLine(
-            $"[SNAPSHOT] Snapshot guardado correctamente.");
+            "[SNAPSHOT] Snapshot guardado correctamente.");
     }
 
     private string GetFilePath(
