@@ -28,6 +28,7 @@
     <ItemGroup>
       <Folder Include="Snapshots\Data\Jumbo\" />
       <Folder Include="Snapshots\Data\Lider\" />
+      <Folder Include="Snapshots\Data\tottus\" />
       <Folder Include="Snapshots\Data\Unimarc\" />
     </ItemGroup>
 
