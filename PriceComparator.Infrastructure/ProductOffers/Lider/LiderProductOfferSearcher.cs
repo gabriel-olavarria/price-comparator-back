@@ -36,6 +36,19 @@ public sealed class LiderProductOfferSearcher : IProductOfferSearcher
             query,
             cancellationToken);
 
+        // Diagnóstico del HTML recibido desde Playwright
+        Console.WriteLine(
+            $"[LIDER] HTML length: {html.Length}");
+
+        Console.WriteLine(
+            $"[LIDER] Robot or human: {html.Contains("Robot or human?")}");
+
+        Console.WriteLine(
+            $"[LIDER] __NEXT_DATA__: {html.Contains("__NEXT_DATA__")}");
+
+        Console.WriteLine(
+            $"[LIDER] searchResult: {html.Contains("searchResult")}");
+
         await _snapshotStore.SaveAsync(
             StoreCode,
             query,
@@ -58,14 +71,23 @@ public sealed class LiderProductOfferSearcher : IProductOfferSearcher
         return offers;
     }
 
-    private async Task<string> SearchLiveAsync( string query, CancellationToken cancellationToken)
+    private async Task<string> SearchLiveAsync(
+        string query,
+        CancellationToken cancellationToken)
     {
-        var encodedQuery = Uri.EscapeDataString(query.Trim());
+        var encodedQuery = Uri.EscapeDataString(
+            query.Trim());
 
-        var url = $"https://super.lider.cl/search?q={encodedQuery}";
+        var url =
+            $"https://super.lider.cl/search?q={encodedQuery}";
 
-        Console.WriteLine($"[LIDER] Consultando tienda: {url}");
+        Console.WriteLine(
+            $"[LIDER] Consultando tienda: {url}");
 
-        return await _browser.GetHtmlAsync( url, cancellationToken, waitAfterLoadMs: 0, keepPageOpenMs: 15000);
+        return await _browser.GetHtmlAsync(
+            url,
+            cancellationToken,
+            waitAfterLoadMs: 0,
+            keepPageOpenMs: 15000);
     }
 }

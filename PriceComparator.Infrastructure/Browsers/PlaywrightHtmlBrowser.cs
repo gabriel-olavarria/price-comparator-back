@@ -37,10 +37,18 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
             Console.WriteLine(
                 $"[PLAYWRIGHT] URL final: {_page.Url}");
 
-            if (IsBlockedPage(_page))
+            var isBlocked = await IsBlockedPageAsync(_page);
+
+            if (isBlocked)
             {
+                if (IsProduction())
+                {
+                    throw new InvalidOperationException(
+                        $"El sitio bloqueó la navegación de Playwright. URL: {_page.Url}");
+                }
+
                 Console.WriteLine(
-                    "[PLAYWRIGHT] Lider solicitó verificación manual.");
+                    "[PLAYWRIGHT] El sitio solicitó verificación manual.");
 
                 Console.WriteLine(
                     "[PLAYWRIGHT] Completa la verificación en la ventana del navegador.");
@@ -67,19 +75,21 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
                     cancellationToken);
             }
 
-            // Obtiene el HTML actual de la página
             var html = await _page.ContentAsync();
 
             Console.WriteLine(
                 $"[PLAYWRIGHT] HTML obtenido. Tamaño: {html.Length} caracteres.");
 
-            // Guarda una copia física del HTML para depuración
             await SaveHtmlAsync(
                 html,
                 _page.Url,
                 cancellationToken);
 
-            if (keepPageOpenMs > 0)
+            /*
+             * En producción no tiene sentido mantener una ventana
+             * "visible", ya que Chromium funciona en modo headless.
+             */
+            if (!IsProduction() && keepPageOpenMs > 0)
             {
                 Console.WriteLine(
                     $"[PLAYWRIGHT] Manteniendo página visible {keepPageOpenMs} ms...");
@@ -106,6 +116,14 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
 
         _playwright = await Playwright.CreateAsync();
 
+        var isProduction = IsProduction();
+
+        Console.WriteLine(
+            $"[PLAYWRIGHT] Entorno: {(isProduction ? "Production" : "Development")}");
+
+        Console.WriteLine(
+            $"[PLAYWRIGHT] Headless: {isProduction}");
+
         var userDataDirectory = Path.Combine(
             Environment.GetFolderPath(
                 Environment.SpecialFolder.LocalApplicationData),
@@ -117,18 +135,43 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
         Console.WriteLine(
             $"[PLAYWRIGHT] Perfil persistente: {userDataDirectory}");
 
-        _context =
-            await _playwright.Chromium.LaunchPersistentContextAsync(
-                userDataDirectory,
-                new BrowserTypeLaunchPersistentContextOptions
-                {
-                    Headless = false,
-                    ViewportSize = null,
-                    Args =
+        var launchOptions =
+            new BrowserTypeLaunchPersistentContextOptions
+            {
+                /*
+                 * LOCAL:
+                 * navegador visible para poder inspeccionarlo
+                 * y completar una verificación manual.
+                 *
+                 * PRODUCTION:
+                 * navegador headless porque Render no tiene GUI.
+                 */
+                Headless = isProduction,
+
+                ViewportSize = isProduction
+                    ? new ViewportSize
+                    {
+                        Width = 1920,
+                        Height = 1080
+                    }
+                    : null,
+
+                Args = isProduction
+                    ?
+                    [
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage"
+                    ]
+                    :
                     [
                         "--start-maximized"
                     ]
-                });
+            };
+
+        _context =
+            await _playwright.Chromium.LaunchPersistentContextAsync(
+                userDataDirectory,
+                launchOptions);
 
         Console.WriteLine(
             "[PLAYWRIGHT] Contexto persistente iniciado.");
@@ -163,11 +206,53 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
         return _page;
     }
 
-    private static bool IsBlockedPage(IPage page)
+    private static async Task<bool> IsBlockedPageAsync(
+        IPage page)
     {
-        return page.Url.Contains(
-            "/blocked",
+        /*
+         * Caso 1:
+         * bloqueo explícito mediante URL.
+         */
+        if (page.Url.Contains(
+                "/blocked",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine(
+                "[PLAYWRIGHT] Página bloqueada detectada por URL.");
+
+            return true;
+        }
+
+        /*
+         * Caso 2:
+         * PerimeterX puede responder HTTP 200 manteniendo
+         * la URL original, pero mostrando un CAPTCHA.
+         */
+        var html = await page.ContentAsync();
+
+        var robotOrHuman = html.Contains(
+            "Robot or human?",
             StringComparison.OrdinalIgnoreCase);
+
+        var pxCaptcha = html.Contains(
+            "px-captcha",
+            StringComparison.OrdinalIgnoreCase);
+
+        if (robotOrHuman || pxCaptcha)
+        {
+            Console.WriteLine(
+                "[PLAYWRIGHT] Challenge/CAPTCHA detectado en el HTML.");
+
+            Console.WriteLine(
+                $"[PLAYWRIGHT] Robot or human: {robotOrHuman}");
+
+            Console.WriteLine(
+                $"[PLAYWRIGHT] px-captcha: {pxCaptcha}");
+
+            return true;
+        }
+
+        return false;
     }
 
     private static async Task WaitForManualVerificationAsync(
@@ -183,7 +268,9 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (!IsBlockedPage(page))
+            var blocked = await IsBlockedPageAsync(page);
+
+            if (!blocked)
             {
                 Console.WriteLine(
                     "[PLAYWRIGHT] Verificación manual completada.");
@@ -226,6 +313,16 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
         {
             Console.WriteLine(
                 $"[PLAYWRIGHT] No se encontró __NEXT_DATA__. URL actual: {page.Url}");
+
+            /*
+             * Antes de propagar el timeout revisamos si
+             * terminamos en una página de challenge.
+             */
+            if (await IsBlockedPageAsync(page))
+            {
+                Console.WriteLine(
+                    "[PLAYWRIGHT] El timeout ocurrió porque el sitio presentó un challenge.");
+            }
 
             throw;
         }
@@ -270,6 +367,15 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
 
         Console.WriteLine(
             $"[PLAYWRIGHT] HTML guardado en: {filePath}");
+    }
+
+    private static bool IsProduction()
+    {
+        return string.Equals(
+            Environment.GetEnvironmentVariable(
+                "ASPNETCORE_ENVIRONMENT"),
+            "Production",
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task WaitAsync(

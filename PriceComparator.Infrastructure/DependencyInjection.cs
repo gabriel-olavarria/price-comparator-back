@@ -3,6 +3,7 @@ using PriceComparator.Application.Interfaces.ProductOffers;
 using PriceComparator.Infrastructure.Browsers;
 using PriceComparator.Infrastructure.ProductOffers.Jumbo;
 using PriceComparator.Infrastructure.ProductOffers.Lider;
+using PriceComparator.Infrastructure.ProductOffers.Tottus;
 using PriceComparator.Infrastructure.ProductOffers.Unimarc;
 using PriceComparator.Infrastructure.Snapshots;
 
@@ -17,12 +18,21 @@ public static class DependencyInjection
         services.AddSingleton< LiderProductParser>();
         services.AddSingleton< JumboProductParser>();
         services.AddSingleton<UnimarcProductParser>();
+        services.AddSingleton<TottusProductParser>();
         services.AddHttpClient< JumboProductOfferSearcher>(client => {
                 ConfigureHttpClient(client, "https://www.jumbo.cl");
+        });
+        services.AddHttpClient<TottusProductOfferSearcher>(client =>
+        {
+            ConfigureHttpClient(
+                client,
+                "https://www.tottus.cl");
         });
         services.AddTransient<IProductOfferSearcher, LiderProductOfferSearcher>();
         services.AddTransient<IProductOfferSearcher>(serviceProvider => serviceProvider .GetRequiredService< JumboProductOfferSearcher>());
         services.AddTransient<IProductOfferSearcher, UnimarcProductOfferSearcher>();
+        services.AddTransient<IProductOfferSearcher>(serviceProvider => serviceProvider.GetRequiredService<TottusProductOfferSearcher>());
+       
         
         return services;
     }

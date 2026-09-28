@@ -7,47 +7,68 @@ public sealed class SearchProductOffersUseCase : ISearchProductOffersUseCase
 {
     private readonly IReadOnlyCollection<IProductOfferSearcher> _searchers;
 
-    public SearchProductOffersUseCase(IEnumerable<IProductOfferSearcher> searchers)
+    public SearchProductOffersUseCase(
+        IEnumerable<IProductOfferSearcher> searchers)
     {
         ArgumentNullException.ThrowIfNull(searchers);
 
         _searchers = searchers.ToArray();
     }
 
-    public async Task<SearchProductOffersResponse> ExecuteAsync(SearchProductOffersRequest request, CancellationToken cancellationToken = default)
+    public async Task<SearchProductOffersResponse> ExecuteAsync(
+        SearchProductOffersRequest request,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        Console.WriteLine($"Buscadores registrados: {_searchers.Count}");
+        Console.WriteLine(
+            $"Buscadores registrados: {_searchers.Count}");
 
         var query = request.Query.Trim();
 
         var categories = request.Categories
-            .Where(category => !string.IsNullOrWhiteSpace(category))
+            .Where(category =>
+                !string.IsNullOrWhiteSpace(category))
             .Select(category => category.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        if (string.IsNullOrWhiteSpace(query) && categories.Length == 0)
+        if (string.IsNullOrWhiteSpace(query) &&
+            categories.Length == 0)
         {
-            throw new ArgumentException("Debe indicar un nombre de producto o al menos una categoría.");
+            throw new ArgumentException(
+                "Debe indicar un nombre de producto o al menos una categoría.");
         }
 
-        var searchTerm = !string.IsNullOrWhiteSpace(query) ? query : categories[0];
+        var searchTerm =
+            !string.IsNullOrWhiteSpace(query)
+                ? query
+                : categories[0];
 
-        var productsByStore = new Dictionary<string, IReadOnlyCollection<ProductOfferResult>>(StringComparer.OrdinalIgnoreCase);
+        var productsByStore =
+            new Dictionary<
+                string,
+                IReadOnlyCollection<ProductOfferResult>>(
+                StringComparer.OrdinalIgnoreCase);
 
         foreach (var searcher in _searchers)
         {
             try
             {
-                Console.WriteLine($"Ejecutando buscador: {searcher.GetType().Name}");
+                Console.WriteLine(
+                    $"Ejecutando buscador: {searcher.GetType().Name}");
 
-                var offers = await searcher.SearchAsync(searchTerm, cancellationToken);
+                var offers = await searcher.SearchAsync(
+                    searchTerm,
+                    cancellationToken);
 
-                Console.WriteLine($"Resultados obtenidos antes de filtrar: {offers.Count}");
+                Console.WriteLine(
+                    $"Resultados obtenidos antes de filtrar: {offers.Count}");
 
-                var filteredOffers = FilterOffers(offers, query, categories);
+                var filteredOffers = FilterOffers(
+                    offers,
+                    query,
+                    categories);
 
                 var products = filteredOffers
                     .GroupBy(offer => offer.ProductUrl)
@@ -58,15 +79,26 @@ public sealed class SearchProductOffersUseCase : ISearchProductOffersUseCase
 
                 productsByStore[searcher.StoreCode] = products;
             }
+            catch (OperationCanceledException)
+                when (cancellationToken.IsCancellationRequested)
+            {
+                Console.WriteLine(
+                    $"Búsqueda cancelada durante la ejecución de {searcher.StoreCode}.");
+
+                throw;
+            }
             catch (Exception exception)
             {
-                Console.WriteLine($"Error ejecutando {searcher.StoreCode}: {exception.Message}");
+                Console.WriteLine(
+                    $"Error ejecutando {searcher.StoreCode}: " +
+                    $"{exception.GetType().Name} - {exception.Message}");
 
                 productsByStore[searcher.StoreCode] = [];
             }
         }
 
-        var totalResults = productsByStore.Values.Sum(products => products.Count);
+        var totalResults = productsByStore.Values
+            .Sum(products => products.Count);
 
         return new SearchProductOffersResponse(
             Query: query,
@@ -84,7 +116,9 @@ public sealed class SearchProductOffersUseCase : ISearchProductOffersUseCase
         if (!string.IsNullOrWhiteSpace(query))
         {
             filteredOffers = filteredOffers.Where(offer =>
-                offer.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
+                offer.Name.Contains(
+                    query,
+                    StringComparison.OrdinalIgnoreCase));
         }
 
         if (categories.Count > 0)
@@ -92,14 +126,19 @@ public sealed class SearchProductOffersUseCase : ISearchProductOffersUseCase
             filteredOffers = filteredOffers.Where(offer =>
                 categories.Any(selectedCategory =>
                     offer.Categories.Any(productCategory =>
-                        productCategory.Contains(selectedCategory, StringComparison.OrdinalIgnoreCase) ||
-                        selectedCategory.Contains(productCategory, StringComparison.OrdinalIgnoreCase))));
+                        productCategory.Contains(
+                            selectedCategory,
+                            StringComparison.OrdinalIgnoreCase) ||
+                        selectedCategory.Contains(
+                            productCategory,
+                            StringComparison.OrdinalIgnoreCase))));
         }
 
         return filteredOffers.ToArray();
     }
 
-    private static ProductOfferResult MapToResult(ProductOffer offer)
+    private static ProductOfferResult MapToResult(
+        ProductOffer offer)
     {
         return new ProductOfferResult(
             Name: offer.Name,
@@ -109,6 +148,9 @@ public sealed class SearchProductOffersUseCase : ISearchProductOffersUseCase
             ImageUrl: offer.ImageUrl?.ToString(),
             Brand: offer.Brand,
             SellerName: offer.SellerName,
-            IsMarketplace: !string.Equals(offer.SellerType, "INTERNAL", StringComparison.OrdinalIgnoreCase));
+            IsMarketplace: !string.Equals(
+                offer.SellerType,
+                "INTERNAL",
+                StringComparison.OrdinalIgnoreCase));
     }
 }
