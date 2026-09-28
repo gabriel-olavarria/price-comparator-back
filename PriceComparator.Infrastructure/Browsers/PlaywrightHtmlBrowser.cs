@@ -17,7 +17,9 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
         CancellationToken cancellationToken = default,
         int waitAfterLoadMs = 0,
         int keepPageOpenMs = 0,
-        bool waitForNextData = true)
+        bool waitForNextData = true,
+        string? waitForSelector = null,
+        int selectorTimeoutMs = 15000)
     {
         await _lock.WaitAsync(cancellationToken);
 
@@ -29,7 +31,9 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
                     url,
                     cancellationToken,
                     waitAfterLoadMs,
-                    waitForNextData);
+                    waitForNextData,
+                    waitForSelector,
+                    selectorTimeoutMs);
             }
 
             return await GetDevelopmentHtmlAsync(
@@ -37,7 +41,9 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
                 cancellationToken,
                 waitAfterLoadMs,
                 keepPageOpenMs,
-                waitForNextData);
+                waitForNextData,
+                waitForSelector,
+                selectorTimeoutMs);
         }
         finally
         {
@@ -53,7 +59,9 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
         string url,
         CancellationToken cancellationToken,
         int waitAfterLoadMs,
-        bool waitForNextData)
+        bool waitForNextData,
+        string? waitForSelector,
+        int selectorTimeoutMs)
     {
         await EnsurePlaywrightAsync();
 
@@ -84,7 +92,12 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
                     {
                         Width = 1366,
                         Height = 768
-                    }
+                    },
+
+                    UserAgent =
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                        "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                        "Chrome/122.0.0.0 Safari/537.36"
                 });
 
         var page = await context.NewPageAsync();
@@ -105,13 +118,30 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
             Console.WriteLine(
                 $"[PLAYWRIGHT] URL final: {page.Url}");
 
+            /*
+             * Si el sitio nos bloqueó, abortamos inmediatamente.
+             *
+             * El finally de este método cerrará la página y los
+             * await using liberarán context y browser.
+             *
+             * La excepción llegará al SearchProductOffersUseCase,
+             * que convertirá esta tienda en [].
+             */
             if (await IsBlockedPageAsync(page))
             {
                 throw new InvalidOperationException(
                     $"El sitio bloqueó la navegación de Playwright. URL: {page.Url}");
             }
 
-            if (waitForNextData)
+            if (!string.IsNullOrEmpty(waitForSelector))
+            {
+                await WaitCustomSelectorAsync(
+                    page,
+                    waitForSelector,
+                    selectorTimeoutMs,
+                    cancellationToken);
+            }
+            else if (waitForNextData)
             {
                 await WaitForNextDataAsync(
                     page,
@@ -133,13 +163,25 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
                     cancellationToken);
             }
 
+            /*
+             * Volvemos a comprobar el bloqueo.
+             *
+             * Algunos sitios pueden mostrar el challenge después
+             * de que la navegación inicial ya terminó.
+             */
+            if (await IsBlockedPageAsync(page))
+            {
+                throw new InvalidOperationException(
+                    $"El sitio bloqueó la navegación de Playwright. URL: {page.Url}");
+            }
+
             var html = await page.ContentAsync();
 
             Console.WriteLine(
-                $"[PLAYWRIGHT] HTML obtenido. Tamaño: {html.Length} caracteres.");
+                $"[PLAYWRIGHT] URL actual al extraer HTML: {page.Url}");
 
             Console.WriteLine(
-                "[PLAYWRIGHT] Production - HTML de diagnóstico no será guardado.");
+                $"[PLAYWRIGHT] HTML obtenido. Tamaño: {html.Length} caracteres.");
 
             return html;
         }
@@ -151,7 +193,14 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
             }
 
             Console.WriteLine(
-                "[PLAYWRIGHT] Production - página, contexto y navegador liberados.");
+                "[PLAYWRIGHT] Production - página cerrada.");
+
+            /*
+             * context y browser se liberan automáticamente
+             * por los await using al salir del método.
+             */
+            Console.WriteLine(
+                "[PLAYWRIGHT] Production - contexto y navegador serán liberados.");
         }
     }
 
@@ -164,86 +213,128 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
         CancellationToken cancellationToken,
         int waitAfterLoadMs,
         int keepPageOpenMs,
-        bool waitForNextData)
+        bool waitForNextData,
+        string? waitForSelector,
+        int selectorTimeoutMs)
     {
         await EnsureDevelopmentContextAsync();
 
         var page = await GetOrCreateDevelopmentPageAsync();
 
-        Console.WriteLine(
-            $"[PLAYWRIGHT] Navegando: {url}");
+        try
+        {
+            Console.WriteLine(
+                $"[PLAYWRIGHT] Navegando: {url}");
 
-        await page.GotoAsync(
-            url,
-            new PageGotoOptions
+            await page.GotoAsync(
+                url,
+                new PageGotoOptions
+                {
+                    WaitUntil = WaitUntilState.DOMContentLoaded,
+                    Timeout = 60000
+                });
+
+            Console.WriteLine(
+                $"[PLAYWRIGHT] URL final: {page.Url}");
+
+            /*
+             * Ya NO esperamos verificaciones manuales.
+             *
+             * Si Líder, Tottus u otro supermercado muestra
+             * challenge/bloqueo, abortamos inmediatamente.
+             */
+            if (await IsBlockedPageAsync(page))
             {
-                WaitUntil = WaitUntilState.DOMContentLoaded,
-                Timeout = 60000
-            });
+                throw new InvalidOperationException(
+                    $"El sitio bloqueó la navegación de Playwright. URL: {page.Url}");
+            }
 
-        Console.WriteLine(
-            $"[PLAYWRIGHT] URL final: {page.Url}");
+            if (!string.IsNullOrEmpty(waitForSelector))
+            {
+                await WaitCustomSelectorAsync(
+                    page,
+                    waitForSelector,
+                    selectorTimeoutMs,
+                    cancellationToken);
+            }
+            else if (waitForNextData)
+            {
+                await WaitForNextDataAsync(
+                    page,
+                    cancellationToken);
+            }
+            else
+            {
+                Console.WriteLine(
+                    "[PLAYWRIGHT] Espera de __NEXT_DATA__ deshabilitada.");
+            }
 
-        if (await IsBlockedPageAsync(page))
-        {
+            if (waitAfterLoadMs > 0)
+            {
+                Console.WriteLine(
+                    $"[PLAYWRIGHT] Esperando {waitAfterLoadMs} ms para contenido dinámico...");
+
+                await WaitAsync(
+                    waitAfterLoadMs,
+                    cancellationToken);
+            }
+
+            /*
+             * Segunda comprobación por si el challenge apareció
+             * después de la navegación inicial.
+             */
+            if (await IsBlockedPageAsync(page))
+            {
+                throw new InvalidOperationException(
+                    $"El sitio bloqueó la navegación de Playwright. URL: {page.Url}");
+            }
+
+            var html = await page.ContentAsync();
+
             Console.WriteLine(
-                "[PLAYWRIGHT] El sitio solicitó verificación manual.");
+                $"[PLAYWRIGHT] HTML obtenido. Tamaño: {html.Length} caracteres.");
 
-            Console.WriteLine(
-                "[PLAYWRIGHT] Completa la verificación en la ventana del navegador.");
-
-            await WaitForManualVerificationAsync(
-                page,
+            // Solo Development guarda HTML de diagnóstico.
+            await SaveHtmlAsync(
+                html,
+                page.Url,
                 cancellationToken);
 
-            Console.WriteLine(
-                $"[PLAYWRIGHT] URL después de verificar: {page.Url}");
-        }
+            if (keepPageOpenMs > 0)
+            {
+                Console.WriteLine(
+                    $"[PLAYWRIGHT] Manteniendo página visible {keepPageOpenMs} ms...");
 
-        if (waitForNextData)
+                await WaitAsync(
+                    keepPageOpenMs,
+                    cancellationToken);
+            }
+
+            return html;
+        }
+        catch
         {
-            await WaitForNextDataAsync(
-                page,
-                cancellationToken);
-        }
-        else
-        {
+            /*
+             * Si esta navegación falla —incluido un bloqueo—
+             * cerramos la página persistente.
+             *
+             * La próxima tienda recibirá una página nueva.
+             */
+            if (!page.IsClosed)
+            {
+                await page.CloseAsync();
+            }
+
+            if (ReferenceEquals(_developmentPage, page))
+            {
+                _developmentPage = null;
+            }
+
             Console.WriteLine(
-                "[PLAYWRIGHT] Espera de __NEXT_DATA__ deshabilitada.");
+                "[PLAYWRIGHT] Development - página liberada después del error/bloqueo.");
+
+            throw;
         }
-
-        if (waitAfterLoadMs > 0)
-        {
-            Console.WriteLine(
-                $"[PLAYWRIGHT] Esperando {waitAfterLoadMs} ms para contenido dinámico...");
-
-            await WaitAsync(
-                waitAfterLoadMs,
-                cancellationToken);
-        }
-
-        var html = await page.ContentAsync();
-
-        Console.WriteLine(
-            $"[PLAYWRIGHT] HTML obtenido. Tamaño: {html.Length} caracteres.");
-
-        // Solo guardamos HTML para diagnóstico local.
-        await SaveHtmlAsync(
-            html,
-            page.Url,
-            cancellationToken);
-
-        if (keepPageOpenMs > 0)
-        {
-            Console.WriteLine(
-                $"[PLAYWRIGHT] Manteniendo página visible {keepPageOpenMs} ms...");
-
-            await WaitAsync(
-                keepPageOpenMs,
-                cancellationToken);
-        }
-
-        return html;
     }
 
     // ============================================================
@@ -320,9 +411,15 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
 
         var pages = _developmentContext.Pages;
 
-        if (pages.Count > 0)
+        /*
+         * Buscamos una página que todavía esté abierta.
+         */
+        var existingPage = pages.FirstOrDefault(
+            existing => !existing.IsClosed);
+
+        if (existingPage is not null)
         {
-            _developmentPage = pages[0];
+            _developmentPage = existingPage;
 
             return _developmentPage;
         }
@@ -340,12 +437,28 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
     private static async Task<bool> IsBlockedPageAsync(
         IPage page)
     {
+        /*
+         * Líder.
+         */
         if (page.Url.Contains(
                 "/blocked",
                 StringComparison.OrdinalIgnoreCase))
         {
             Console.WriteLine(
                 "[PLAYWRIGHT] Página bloqueada detectada por URL.");
+
+            return true;
+        }
+
+        /*
+         * Cloudflare / Tottus.
+         */
+        if (page.Url.Contains(
+                "__cf_chl_rt_tk",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine(
+                "[PLAYWRIGHT] Challenge de Cloudflare detectado por URL.");
 
             return true;
         }
@@ -360,56 +473,89 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
             "px-captcha",
             StringComparison.OrdinalIgnoreCase);
 
-        if (robotOrHuman || pxCaptcha)
+        var cloudflareChallenge =
+            html.Contains(
+                "cf-challenge",
+                StringComparison.OrdinalIgnoreCase) ||
+            html.Contains(
+                "challenges.cloudflare.com",
+                StringComparison.OrdinalIgnoreCase) ||
+            html.Contains(
+                "Just a moment",
+                StringComparison.OrdinalIgnoreCase);
+
+        if (!robotOrHuman &&
+            !pxCaptcha &&
+            !cloudflareChallenge)
         {
-            Console.WriteLine(
-                "[PLAYWRIGHT] Challenge/CAPTCHA detectado.");
-
-            Console.WriteLine(
-                $"[PLAYWRIGHT] Robot or human: {robotOrHuman}");
-
-            Console.WriteLine(
-                $"[PLAYWRIGHT] px-captcha: {pxCaptcha}");
-
-            return true;
+            return false;
         }
 
-        return false;
+        Console.WriteLine(
+            "[PLAYWRIGHT] Challenge/CAPTCHA detectado.");
+
+        Console.WriteLine(
+            $"[PLAYWRIGHT] Robot or human: {robotOrHuman}");
+
+        Console.WriteLine(
+            $"[PLAYWRIGHT] px-captcha: {pxCaptcha}");
+
+        Console.WriteLine(
+            $"[PLAYWRIGHT] Cloudflare challenge: {cloudflareChallenge}");
+
+        return true;
     }
 
-    private static async Task WaitForManualVerificationAsync(
+    // ============================================================
+    // SELECTOR & NEXT DATA WAITING
+    // ============================================================
+
+    private static async Task WaitCustomSelectorAsync(
         IPage page,
+        string selector,
+        int timeoutMs,
         CancellationToken cancellationToken)
     {
-        var timeout = TimeSpan.FromMinutes(2);
-        var checkInterval = TimeSpan.FromSeconds(1);
+        cancellationToken.ThrowIfCancellationRequested();
 
-        var startedAt = DateTime.UtcNow;
+        Console.WriteLine(
+            $"[PLAYWRIGHT] Esperando selector: {selector}...");
 
-        while (DateTime.UtcNow - startedAt < timeout)
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            await page.WaitForSelectorAsync(
+                selector,
+                new PageWaitForSelectorOptions
+                {
+                    State = WaitForSelectorState.Attached,
+                    Timeout = timeoutMs
+                });
 
-            if (!await IsBlockedPageAsync(page))
+            Console.WriteLine(
+                $"[PLAYWRIGHT] Selector {selector} encontrado con éxito.");
+        }
+        catch (TimeoutException)
+        {
+            Console.WriteLine(
+                $"[PLAYWRIGHT] No se encontró el selector {selector}. " +
+                $"URL actual: {page.Url}");
+
+            /*
+             * Si el selector no apareció porque el sitio nos bloqueó,
+             * lanzamos una excepción para abortar esa tienda.
+             */
+            if (await IsBlockedPageAsync(page))
             {
-                Console.WriteLine(
-                    "[PLAYWRIGHT] Verificación manual completada.");
-
-                return;
+                throw new InvalidOperationException(
+                    $"El sitio bloqueó la navegación de Playwright. URL: {page.Url}");
             }
 
-            await Task.Delay(
-                checkInterval,
-                cancellationToken);
+            /*
+             * Si simplemente no apareció el selector pero tampoco
+             * existe un bloqueo, dejamos continuar al parser.
+             */
         }
-
-        throw new TimeoutException(
-            "No se completó la verificación manual dentro de 2 minutos.");
     }
-
-    // ============================================================
-    // NEXT DATA
-    // ============================================================
 
     private static async Task WaitForNextDataAsync(
         IPage page,
@@ -440,10 +586,14 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
 
             if (await IsBlockedPageAsync(page))
             {
-                Console.WriteLine(
-                    "[PLAYWRIGHT] El sitio presentó un challenge.");
+                throw new InvalidOperationException(
+                    $"El sitio bloqueó la navegación de Playwright. URL: {page.Url}");
             }
 
+            /*
+             * Si no fue bloqueo, mantenemos el comportamiento anterior:
+             * propagamos el timeout.
+             */
             throw;
         }
     }

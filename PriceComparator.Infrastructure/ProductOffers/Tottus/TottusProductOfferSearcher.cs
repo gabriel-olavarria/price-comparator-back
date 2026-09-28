@@ -38,25 +38,27 @@ public sealed class TottusProductOfferSearcher
             cancellationToken);
 
         /*
-         * Los snapshots se mantienen para desarrollo,
-         * pero no se escriben en Production.
+         * Si Tottus respondió con una página de protección de Cloudflare,
+         * no intentamos procesarla como si fuera una página de productos.
          */
-        if (!IsProduction())
+        if (IsCloudflareChallenge(html))
         {
-            await _snapshotStore.SaveAsync(
-                StoreCode,
-                query,
-                html,
-                cancellationToken);
+            Console.WriteLine(
+                "[TOTTUS] Challenge de Cloudflare detectado. " +
+                "Se devolverá una colección vacía.");
 
-            Console.WriteLine(
-                $"[TOTTUS] Snapshot guardado: {query}");
+            return [];
         }
-        else
-        {
-            Console.WriteLine(
-                "[TOTTUS] Production - snapshot no será guardado.");
-        }
+
+        /*
+         * FileSnapshotStore decide internamente si corresponde guardar.
+         * En Production no escribirá archivos.
+         */
+        await _snapshotStore.SaveAsync(
+            StoreCode,
+            query,
+            html,
+            cancellationToken);
 
         var offers = await _parser.ParseAsync(
             html,
@@ -84,17 +86,42 @@ public sealed class TottusProductOfferSearcher
         return await _browser.GetHtmlAsync(
             url,
             cancellationToken,
-            waitAfterLoadMs: 3000,
+            waitAfterLoadMs: 0,
             keepPageOpenMs: 0,
             waitForNextData: false);
     }
 
-    private static bool IsProduction()
+    private static bool IsCloudflareChallenge(
+        string html)
     {
-        return string.Equals(
-            Environment.GetEnvironmentVariable(
-                "ASPNETCORE_ENVIRONMENT"),
-            "Production",
-            StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            return false;
+        }
+
+        var cloudflareDetected =
+            html.Contains(
+                "__cf_chl_",
+                StringComparison.OrdinalIgnoreCase)
+            ||
+            html.Contains(
+                "cf-chl-",
+                StringComparison.OrdinalIgnoreCase)
+            ||
+            html.Contains(
+                "challenge-platform",
+                StringComparison.OrdinalIgnoreCase)
+            ||
+            html.Contains(
+                "Just a moment",
+                StringComparison.OrdinalIgnoreCase);
+
+        if (cloudflareDetected)
+        {
+            Console.WriteLine(
+                "[TOTTUS] Se detectaron indicadores de Cloudflare en el HTML.");
+        }
+
+        return cloudflareDetected;
     }
 }

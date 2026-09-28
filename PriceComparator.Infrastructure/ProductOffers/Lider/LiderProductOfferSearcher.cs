@@ -88,6 +88,6 @@ public sealed class LiderProductOfferSearcher : IProductOfferSearcher
             url,
             cancellationToken,
             waitAfterLoadMs: 0,
-            keepPageOpenMs: 15000);
+            keepPageOpenMs: 5000);
     }
 }
