@@ -22,18 +22,16 @@ public static class DependencyInjection
         services.AddHttpClient< JumboProductOfferSearcher>(client => {
                 ConfigureHttpClient(client, "https://www.jumbo.cl");
         });
-        services.AddHttpClient<TottusProductOfferSearcher>(client =>
-        {
-            ConfigureHttpClient(
-                client,
-                "https://www.tottus.cl");
-        });
+ 
         services.AddTransient<IProductOfferSearcher, LiderProductOfferSearcher>();
         services.AddTransient<IProductOfferSearcher>(serviceProvider => serviceProvider .GetRequiredService< JumboProductOfferSearcher>());
         services.AddTransient<IProductOfferSearcher, UnimarcProductOfferSearcher>();
-        services.AddTransient<IProductOfferSearcher>(serviceProvider => serviceProvider.GetRequiredService<TottusProductOfferSearcher>());
-       
+ 
         
+        services.AddTransient<TottusProductOfferSearcher>();
+        services.AddTransient<IProductOfferSearcher>(
+            serviceProvider =>
+                serviceProvider.GetRequiredService<TottusProductOfferSearcher>());
         return services;
     }
 

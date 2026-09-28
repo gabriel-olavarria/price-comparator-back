@@ -1,5 +1,6 @@
 using PriceComparator.Application.Interfaces.ProductOffers;
 using PriceComparator.Domain.Entities;
+using PriceComparator.Infrastructure.Browsers;
 using PriceComparator.Infrastructure.Snapshots;
 
 namespace PriceComparator.Infrastructure.ProductOffers.Tottus;
@@ -7,18 +8,18 @@ namespace PriceComparator.Infrastructure.ProductOffers.Tottus;
 public sealed class TottusProductOfferSearcher
     : IProductOfferSearcher
 {
-    private readonly HttpClient _httpClient;
+    private readonly PlaywrightHtmlBrowser _browser;
     private readonly ISnapshotStore _snapshotStore;
     private readonly TottusProductParser _parser;
 
     public string StoreCode => "Tottus";
 
     public TottusProductOfferSearcher(
-        HttpClient httpClient,
+        PlaywrightHtmlBrowser browser,
         ISnapshotStore snapshotStore,
         TottusProductParser parser)
     {
-        _httpClient = httpClient;
+        _browser = browser;
         _snapshotStore = snapshotStore;
         _parser = parser;
     }
@@ -36,14 +37,26 @@ public sealed class TottusProductOfferSearcher
             query,
             cancellationToken);
 
-        await _snapshotStore.SaveAsync(
-            StoreCode,
-            query,
-            html,
-            cancellationToken);
+        /*
+         * Los snapshots se mantienen para desarrollo,
+         * pero no se escriben en Production.
+         */
+        if (!IsProduction())
+        {
+            await _snapshotStore.SaveAsync(
+                StoreCode,
+                query,
+                html,
+                cancellationToken);
 
-        Console.WriteLine(
-            $"[TOTTUS] Snapshot guardado: {query}");
+            Console.WriteLine(
+                $"[TOTTUS] Snapshot guardado: {query}");
+        }
+        else
+        {
+            Console.WriteLine(
+                "[TOTTUS] Production - snapshot no será guardado.");
+        }
 
         var offers = await _parser.ParseAsync(
             html,
@@ -60,20 +73,28 @@ public sealed class TottusProductOfferSearcher
         CancellationToken cancellationToken)
     {
         var encodedQuery =
-            Uri.EscapeDataString(
-                query.Trim());
+            Uri.EscapeDataString(query.Trim());
 
-        var requestUrl =
-            $"/tottus-cl/buscar?Ntt={encodedQuery}";
+        var url =
+            $"https://www.tottus.cl/tottus-cl/buscar?Ntt={encodedQuery}";
 
-        using var response =
-            await _httpClient.GetAsync(
-                requestUrl,
-                cancellationToken);
+        Console.WriteLine(
+            $"[TOTTUS] Consultando tienda con Playwright: {url}");
 
-        response.EnsureSuccessStatusCode();
+        return await _browser.GetHtmlAsync(
+            url,
+            cancellationToken,
+            waitAfterLoadMs: 3000,
+            keepPageOpenMs: 0,
+            waitForNextData: false);
+    }
 
-        return await response.Content.ReadAsStringAsync(
-            cancellationToken);
+    private static bool IsProduction()
+    {
+        return string.Equals(
+            Environment.GetEnvironmentVariable(
+                "ASPNETCORE_ENVIRONMENT"),
+            "Production",
+            StringComparison.OrdinalIgnoreCase);
     }
 }

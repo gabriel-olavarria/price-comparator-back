@@ -16,7 +16,8 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
         string url,
         CancellationToken cancellationToken = default,
         int waitAfterLoadMs = 0,
-        int keepPageOpenMs = 0)
+        int keepPageOpenMs = 0,
+        bool waitForNextData = true)
     {
         await _lock.WaitAsync(cancellationToken);
 
@@ -27,14 +28,16 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
                 return await GetProductionHtmlAsync(
                     url,
                     cancellationToken,
-                    waitAfterLoadMs);
+                    waitAfterLoadMs,
+                    waitForNextData);
             }
 
             return await GetDevelopmentHtmlAsync(
                 url,
                 cancellationToken,
                 waitAfterLoadMs,
-                keepPageOpenMs);
+                keepPageOpenMs,
+                waitForNextData);
         }
         finally
         {
@@ -49,7 +52,8 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
     private async Task<string> GetProductionHtmlAsync(
         string url,
         CancellationToken cancellationToken,
-        int waitAfterLoadMs)
+        int waitAfterLoadMs,
+        bool waitForNextData)
     {
         await EnsurePlaywrightAsync();
 
@@ -107,9 +111,17 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
                     $"El sitio bloqueó la navegación de Playwright. URL: {page.Url}");
             }
 
-            await WaitForNextDataAsync(
-                page,
-                cancellationToken);
+            if (waitForNextData)
+            {
+                await WaitForNextDataAsync(
+                    page,
+                    cancellationToken);
+            }
+            else
+            {
+                Console.WriteLine(
+                    "[PLAYWRIGHT] Espera de __NEXT_DATA__ deshabilitada.");
+            }
 
             if (waitAfterLoadMs > 0)
             {
@@ -133,7 +145,10 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
         }
         finally
         {
-            await page.CloseAsync();
+            if (!page.IsClosed)
+            {
+                await page.CloseAsync();
+            }
 
             Console.WriteLine(
                 "[PLAYWRIGHT] Production - página, contexto y navegador liberados.");
@@ -148,7 +163,8 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
         string url,
         CancellationToken cancellationToken,
         int waitAfterLoadMs,
-        int keepPageOpenMs)
+        int keepPageOpenMs,
+        bool waitForNextData)
     {
         await EnsureDevelopmentContextAsync();
 
@@ -184,9 +200,17 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
                 $"[PLAYWRIGHT] URL después de verificar: {page.Url}");
         }
 
-        await WaitForNextDataAsync(
-            page,
-            cancellationToken);
+        if (waitForNextData)
+        {
+            await WaitForNextDataAsync(
+                page,
+                cancellationToken);
+        }
+        else
+        {
+            Console.WriteLine(
+                "[PLAYWRIGHT] Espera de __NEXT_DATA__ deshabilitada.");
+        }
 
         if (waitAfterLoadMs > 0)
         {
@@ -221,6 +245,10 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
 
         return html;
     }
+
+    // ============================================================
+    // INITIALIZATION
+    // ============================================================
 
     private async Task EnsurePlaywrightAsync()
     {
@@ -305,6 +333,10 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
         return _developmentPage;
     }
 
+    // ============================================================
+    // BLOCK / CAPTCHA
+    // ============================================================
+
     private static async Task<bool> IsBlockedPageAsync(
         IPage page)
     {
@@ -375,6 +407,10 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
             "No se completó la verificación manual dentro de 2 minutos.");
     }
 
+    // ============================================================
+    // NEXT DATA
+    // ============================================================
+
     private static async Task WaitForNextDataAsync(
         IPage page,
         CancellationToken cancellationToken)
@@ -411,6 +447,10 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
             throw;
         }
     }
+
+    // ============================================================
+    // DEVELOPMENT HTML
+    // ============================================================
 
     private static async Task SaveHtmlAsync(
         string html,
@@ -453,6 +493,10 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
             $"[PLAYWRIGHT] HTML guardado en: {filePath}");
     }
 
+    // ============================================================
+    // HELPERS
+    // ============================================================
+
     private static bool IsProduction()
     {
         return string.Equals(
@@ -475,6 +519,10 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable
             milliseconds,
             cancellationToken);
     }
+
+    // ============================================================
+    // DISPOSE
+    // ============================================================
 
     public async ValueTask DisposeAsync()
     {
