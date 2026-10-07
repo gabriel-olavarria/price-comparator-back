@@ -7,12 +7,9 @@ namespace PriceComparator.Infrastructure.ProductOffers.Lider;
 
 public sealed class LiderProductParser
 {
-    private static readonly Uri LiderBaseUri =
-        new("https://super.lider.cl");
+    private static readonly Uri LiderBaseUri = new("https://super.lider.cl");
 
-    public async Task<IReadOnlyCollection<ProductOffer>> ParseAsync(
-        string html,
-        CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyCollection<ProductOffer>> ParseAsync(string html, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(html))
         {
@@ -20,69 +17,43 @@ public sealed class LiderProductParser
         }
 
         var parser = new HtmlParser();
+        var document = await parser.ParseDocumentAsync(html, cancellationToken);
+        var nextDataElement = document.QuerySelector("script#__NEXT_DATA__");
 
-        var document = await parser.ParseDocumentAsync(
-            html,
-            cancellationToken);
-
-        var nextDataElement =
-            document.QuerySelector(
-                "script#__NEXT_DATA__");
-
-        if (nextDataElement is null ||
-            string.IsNullOrWhiteSpace(
-                nextDataElement.TextContent))
+        if (nextDataElement is null || string.IsNullOrWhiteSpace(nextDataElement.TextContent))
         {
-            Console.WriteLine(
-                "[LIDER][PARSER] No se encontró __NEXT_DATA__.");
-
+            Console.WriteLine("[LIDER][PARSER] No se encontró __NEXT_DATA__.");
             return [];
         }
 
         try
         {
-            using var jsonDocument =
-                JsonDocument.Parse(
-                    nextDataElement.TextContent);
+            using var jsonDocument = JsonDocument.Parse(nextDataElement.TextContent);
 
-            if (!TryFindSearchResult(
-                    jsonDocument.RootElement,
-                    out var searchResult))
+            if (!TryFindSearchResult(jsonDocument.RootElement, out var searchResult))
             {
-                Console.WriteLine(
-                    "[LIDER][PARSER] No se encontró searchResult.");
-
+                Console.WriteLine("[LIDER][PARSER] No se encontró searchResult.");
                 return [];
             }
 
-            var offers =
-                ParseOrganicProducts(
-                    searchResult);
+            var offers = ParseOrganicProducts(searchResult);
 
-            Console.WriteLine(
-                $"[LIDER][PARSER] Productos orgánicos extraídos: {offers.Count}");
+            Console.WriteLine($"[LIDER][PARSER] Productos orgánicos extraídos: {offers.Count}");
 
             return offers;
         }
         catch (JsonException exception)
         {
-            Console.WriteLine(
-                $"[LIDER][PARSER] JSON inválido: {exception.Message}");
-
+            Console.WriteLine($"[LIDER][PARSER] JSON inválido: {exception.Message}");
             return [];
         }
     }
 
-    private static bool TryFindSearchResult(
-        JsonElement element,
-        out JsonElement searchResult)
+    private static bool TryFindSearchResult(JsonElement element, out JsonElement searchResult)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {
-            if (element.TryGetProperty(
-                    "searchResult",
-                    out var result) &&
-                result.ValueKind == JsonValueKind.Object)
+            if (element.TryGetProperty("searchResult", out var result) && result.ValueKind == JsonValueKind.Object)
             {
                 searchResult = result;
                 return true;
@@ -90,9 +61,7 @@ public sealed class LiderProductParser
 
             foreach (var property in element.EnumerateObject())
             {
-                if (TryFindSearchResult(
-                        property.Value,
-                        out searchResult))
+                if (TryFindSearchResult(property.Value, out searchResult))
                 {
                     return true;
                 }
@@ -103,9 +72,7 @@ public sealed class LiderProductParser
         {
             foreach (var item in element.EnumerateArray())
             {
-                if (TryFindSearchResult(
-                        item,
-                        out searchResult))
+                if (TryFindSearchResult(item, out searchResult))
                 {
                     return true;
                 }
@@ -113,30 +80,21 @@ public sealed class LiderProductParser
         }
 
         searchResult = default;
-
         return false;
     }
 
-    private static IReadOnlyCollection<ProductOffer>
-        ParseOrganicProducts(
-            JsonElement searchResult)
+    private static IReadOnlyCollection<ProductOffer> ParseOrganicProducts(JsonElement searchResult)
     {
-        if (!searchResult.TryGetProperty(
-                "itemStacks",
-                out var itemStacks) ||
-            itemStacks.ValueKind !=
-            JsonValueKind.Array)
+        if (!searchResult.TryGetProperty("itemStacks", out var itemStacks) || itemStacks.ValueKind != JsonValueKind.Array)
         {
             return [];
         }
 
-        var offers =
-            new List<ProductOffer>();
+        var offers = new List<ProductOffer>();
 
         foreach (var stack in itemStacks.EnumerateArray())
         {
-            if (stack.ValueKind !=
-                JsonValueKind.Object)
+            if (stack.ValueKind != JsonValueKind.Object)
             {
                 continue;
             }
@@ -146,19 +104,14 @@ public sealed class LiderProductParser
                 continue;
             }
 
-            if (!stack.TryGetProperty(
-                    "items",
-                    out var items) ||
-                items.ValueKind !=
-                JsonValueKind.Array)
+            if (!stack.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
             {
                 continue;
             }
 
             foreach (var product in items.EnumerateArray())
             {
-                if (product.ValueKind !=
-                    JsonValueKind.Object)
+                if (product.ValueKind != JsonValueKind.Object)
                 {
                     continue;
                 }
@@ -168,10 +121,7 @@ public sealed class LiderProductParser
                     continue;
                 }
 
-                var offer =
-                    TryCreateProductOffer(
-                        product);
-
+                var offer = TryCreateProductOffer(product);
                 if (offer is not null)
                 {
                     offers.Add(offer);
@@ -180,76 +130,46 @@ public sealed class LiderProductParser
         }
 
         return offers
-            .GroupBy(
-                offer => offer.ProductUrl.AbsoluteUri,
-                StringComparer.OrdinalIgnoreCase)
-            .Select(
-                group => group.First())
+            .GroupBy(offer => offer.ProductUrl.AbsoluteUri, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
             .ToArray();
     }
 
-    private static bool IsSponsoredStack(
-        JsonElement stack)
+    private static bool IsSponsoredStack(JsonElement stack)
     {
-        if (!stack.TryGetProperty(
-                "meta",
-                out var meta) ||
-            meta.ValueKind !=
-            JsonValueKind.Object)
+        if (!stack.TryGetProperty("meta", out var meta) || meta.ValueKind != JsonValueKind.Object)
         {
             return false;
         }
 
-        if (!meta.TryGetProperty(
-                "isSponsored",
-                out var sponsored))
+        if (!meta.TryGetProperty("isSponsored", out var sponsored))
         {
             return false;
         }
 
-        return sponsored.ValueKind ==
-               JsonValueKind.True;
+        return sponsored.ValueKind == JsonValueKind.True;
     }
 
-    private static bool IsProduct(
-        JsonElement product)
+    private static bool IsProduct(JsonElement product)
     {
-        if (!product.TryGetProperty(
-                "__typename",
-                out var typeProperty))
+        if (!product.TryGetProperty("__typename", out var typeProperty))
         {
             return false;
         }
 
-        return typeProperty.ValueKind ==
-               JsonValueKind.String
-               &&
-               string.Equals(
-                   typeProperty.GetString(),
-                   "Product",
-                   StringComparison.Ordinal);
+        return typeProperty.ValueKind == JsonValueKind.String && string.Equals(typeProperty.GetString(), "Product", StringComparison.Ordinal);
     }
 
-    private static ProductOffer?
-        TryCreateProductOffer(
-            JsonElement product)
+    private static ProductOffer? TryCreateProductOffer(JsonElement product)
     {
-        if (!TryGetString(
-                product,
-                "name",
-                out var name))
+        if (!TryGetString(product, "name", out var name))
         {
             return null;
         }
 
-        if (!TryGetDecimal(
-                product,
-                "price",
-                out var price) ||
-            price <= 0)
+        if (!TryGetDecimal(product, "price", out var price) || price <= 0)
         {
-            price = TryGetPriceFromPriceInfo(
-                product);
+            price = TryGetPriceFromPriceInfo(product);
 
             if (price <= 0)
             {
@@ -257,52 +177,25 @@ public sealed class LiderProductParser
             }
         }
 
-        if (!TryGetString(
-                product,
-                "canonicalUrl",
-                out var productUrlText))
+        if (!TryGetString(product, "canonicalUrl", out var productUrlText))
         {
             return null;
         }
 
-        if (!TryCreateAbsoluteUri(
-                productUrlText,
-                out var productUrl))
+        if (!TryCreateAbsoluteUri(productUrlText, out var productUrl))
         {
             return null;
         }
 
-        var imageUrl =
-            GetImageUrl(
-                product);
+        var imageUrl = GetImageUrl(product);
+        TryGetString(product, "brand", out var brand);
+        TryGetString(product, "sellerName", out var sellerName);
+        TryGetString(product, "sellerType", out var sellerType);
 
-        TryGetString(
-            product,
-            "brand",
-            out var brand);
+        var categories = GetCategories(product);
+        var availability = GetAvailability(product);
 
-        TryGetString(
-            product,
-            "sellerName",
-            out var sellerName);
-
-        TryGetString(
-            product,
-            "sellerType",
-            out var sellerType);
-
-        var categories =
-            GetCategories(
-                product);
-
-        var availability =
-            GetAvailability(
-                product);
-
-        var store =
-            new Store(
-                code: "LIDER",
-                name: "Lider");
+        var store = new Store(code: "LIDER", name: "Lider");
 
         return new ProductOffer(
             name: name,
@@ -312,66 +205,36 @@ public sealed class LiderProductParser
             imageUrl: imageUrl,
             brand: brand,
             sellerName: sellerName,
-            sellerType: sellerType,
             categories: categories,
             availability: availability);
     }
 
-    private static decimal TryGetPriceFromPriceInfo(
-        JsonElement product)
+    private static decimal TryGetPriceFromPriceInfo(JsonElement product)
     {
-        if (!product.TryGetProperty(
-                "priceInfo",
-                out var priceInfo) ||
-            priceInfo.ValueKind !=
-            JsonValueKind.Object)
+        if (!product.TryGetProperty("priceInfo", out var priceInfo) || priceInfo.ValueKind != JsonValueKind.Object)
         {
             return 0;
         }
 
-        if (!priceInfo.TryGetProperty(
-                "currentPrice",
-                out var currentPrice) ||
-            currentPrice.ValueKind !=
-            JsonValueKind.Object)
+        if (!priceInfo.TryGetProperty("currentPrice", out var currentPrice) || currentPrice.ValueKind != JsonValueKind.Object)
         {
             return 0;
         }
 
-        return TryGetDecimal(
-            currentPrice,
-            "price",
-            out var price)
-            ? price
-            : 0;
+        return TryGetDecimal(currentPrice, "price", out var price) ? price : 0;
     }
 
-    private static Uri? GetImageUrl(
-        JsonElement product)
+    private static Uri? GetImageUrl(JsonElement product)
     {
-        if (TryGetString(
-                product,
-                "image",
-                out var directImage) &&
-            TryCreateAbsoluteUri(
-                directImage,
-                out var directImageUrl))
+        if (TryGetString(product, "image", out var directImage) && TryCreateAbsoluteUri(directImage, out var directImageUrl))
         {
             return directImageUrl;
         }
 
-        if (product.TryGetProperty(
-                "imageInfo",
-                out var imageInfo) &&
-            imageInfo.ValueKind ==
-            JsonValueKind.Object &&
-            TryGetString(
-                imageInfo,
-                "thumbnailUrl",
-                out var thumbnailUrl) &&
-            TryCreateAbsoluteUri(
-                thumbnailUrl,
-                out var imageInfoUrl))
+        if (product.TryGetProperty("imageInfo", out var imageInfo) &&
+            imageInfo.ValueKind == JsonValueKind.Object &&
+            TryGetString(imageInfo, "thumbnailUrl", out var thumbnailUrl) &&
+            TryCreateAbsoluteUri(thumbnailUrl, out var imageInfoUrl))
         {
             return imageInfoUrl;
         }
@@ -379,94 +242,48 @@ public sealed class LiderProductParser
         return null;
     }
 
-    private static IReadOnlyCollection<string>
-        GetCategories(
-            JsonElement product)
+    private static IReadOnlyCollection<string> GetCategories(JsonElement product)
     {
-        if (!product.TryGetProperty(
-                "category",
-                out var category) ||
-            category.ValueKind !=
-            JsonValueKind.Object)
+        if (!product.TryGetProperty("category", out var category) || category.ValueKind != JsonValueKind.Object)
         {
             return [];
         }
 
-        var categories =
-            new List<string>();
+        var categories = new List<string>();
 
-        if (category.TryGetProperty(
-                "path",
-                out var path) &&
-            path.ValueKind ==
-            JsonValueKind.Array)
+        if (category.TryGetProperty("path", out var path) && path.ValueKind == JsonValueKind.Array)
         {
-            foreach (
-                var categoryItem
-                in path.EnumerateArray())
+            foreach (var categoryItem in path.EnumerateArray())
             {
-                if (TryGetString(
-                        categoryItem,
-                        "name",
-                        out var categoryName))
+                if (TryGetString(categoryItem, "name", out var categoryName))
                 {
-                    categories.Add(
-                        categoryName);
+                    categories.Add(categoryName);
                 }
             }
         }
 
-        if (TryGetString(
-                category,
-                "categoryPath",
-                out var categoryPath))
+        if (TryGetString(category, "categoryPath", out var categoryPath))
         {
-            categories.AddRange(
-                categoryPath
-                    .Split(
-                        '/',
-                        StringSplitOptions.RemoveEmptyEntries |
-                        StringSplitOptions.TrimEntries));
+            categories.AddRange(categoryPath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         }
 
-        return categories
-            .Where(categoryName =>
-                !string.IsNullOrWhiteSpace(
-                    categoryName))
-            .Distinct(
-                StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        return categories.Where(categoryName => !string.IsNullOrWhiteSpace(categoryName)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
-    private static string? GetAvailability(
-        JsonElement product)
+    private static string? GetAvailability(JsonElement product)
     {
-        if (TryGetString(
-                product,
-                "availabilityStatus",
-                out var availabilityStatus))
+        if (TryGetString(product, "availabilityStatus", out var availabilityStatus))
         {
             return availabilityStatus;
         }
 
-        if (TryGetString(
-                product,
-                "availabilityStatusDisplayValue",
-                out var displayValue))
+        if (TryGetString(product, "availabilityStatusDisplayValue", out var displayValue))
         {
             return NormalizeAvailability(
                 displayValue);
         }
 
-        if (product.TryGetProperty(
-                "availabilityStatusV2",
-                out var availabilityV2) &&
-            availabilityV2.ValueKind ==
-            JsonValueKind.Object &&
-            TryGetString(
-                availabilityV2,
-                "value",
-                out var availabilityValue))
+        if (product.TryGetProperty("availabilityStatusV2", out var availabilityV2) && availabilityV2.ValueKind == JsonValueKind.Object && TryGetString(availabilityV2, "value", out var availabilityValue))
         {
             return availabilityValue;
         }

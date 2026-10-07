@@ -8,8 +8,7 @@ namespace PriceComparator.Infrastructure.ProductOffers.Jumbo;
 
 public sealed class JumboProductParser
 {
-    private static readonly Uri JumboBaseUri =
-        new("https://www.jumbo.cl");
+    private static readonly Uri JumboBaseUri = new("https://www.jumbo.cl");
 
     public async Task<IReadOnlyCollection<ProductOffer>> ParseAsync(
         string html,
@@ -22,81 +21,48 @@ public sealed class JumboProductParser
 
         var parser = new HtmlParser();
 
-        var document = await parser.ParseDocumentAsync(
-            html,
-            cancellationToken);
+        var document = await parser.ParseDocumentAsync(html, cancellationToken);
 
         /*
          * Las categorías vienen en los atributos
          * data-gtm-product-click de las tarjetas.
          */
-        var categoriesByProductUrl =
-            GetCategoriesByProductUrl(document);
+        var categoriesByProductUrl = GetCategoriesByProductUrl(document);
 
-        Console.WriteLine(
-            $"Productos con categorías en Jumbo: " +
-            $"{categoriesByProductUrl.Count}");
+        Console.WriteLine($"Productos con categorías en Jumbo: " + $"{categoriesByProductUrl.Count}");
 
         /*
          * Los datos principales vienen en un JSON-LD
          * cuyo @type es ItemList.
          */
-        var jsonLdElement =
-            FindProductItemList(document);
+        var jsonLdElement = FindProductItemList(document);
 
-        if (jsonLdElement is null ||
-            string.IsNullOrWhiteSpace(
-                jsonLdElement.TextContent))
+        if (jsonLdElement is null || string.IsNullOrWhiteSpace(jsonLdElement.TextContent))
         {
-            Console.WriteLine(
-                "No se encontró el JSON-LD ItemList de Jumbo.");
-
+            Console.WriteLine("No se encontró el JSON-LD ItemList de Jumbo.");
             return [];
         }
 
-        using var jsonDocument =
-            JsonDocument.Parse(
-                jsonLdElement.TextContent);
+        using var jsonDocument = JsonDocument.Parse(jsonLdElement.TextContent);
+        var offers = ParseProducts(jsonDocument.RootElement, categoriesByProductUrl);
 
-        var offers =
-            ParseProducts(
-                jsonDocument.RootElement,
-                categoriesByProductUrl);
-
-        Console.WriteLine(
-            $"Productos extraídos desde Jumbo: {offers.Count}");
+        Console.WriteLine($"Productos extraídos desde Jumbo: {offers.Count}");
 
         return offers;
     }
 
-    private static IReadOnlyDictionary<
-        string,
-        IReadOnlyCollection<string>>
-        GetCategoriesByProductUrl(
-            IDocument document)
+    private static IReadOnlyDictionary<string, IReadOnlyCollection<string>> GetCategoriesByProductUrl(IDocument document)
     {
-        var result =
-            new Dictionary<
-                string,
-                IReadOnlyCollection<string>>(
-                StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase);
 
-        var productLinks =
-            document.QuerySelectorAll(
-                "a[data-gtm-product-click][href]");
+        var productLinks = document.QuerySelectorAll("a[data-gtm-product-click][href]");
 
         foreach (var productLink in productLinks)
         {
-            var productUrl =
-                productLink.GetAttribute("href");
+            var productUrl = productLink.GetAttribute("href");
+            var encodedAnalyticsJson = productLink.GetAttribute("data-gtm-product-click");
 
-            var encodedAnalyticsJson =
-                productLink.GetAttribute(
-                    "data-gtm-product-click");
-
-            if (string.IsNullOrWhiteSpace(productUrl) ||
-                string.IsNullOrWhiteSpace(
-                    encodedAnalyticsJson))
+            if (string.IsNullOrWhiteSpace(productUrl) || string.IsNullOrWhiteSpace(encodedAnalyticsJson))
             {
                 continue;
             }
@@ -108,103 +74,66 @@ public sealed class JumboProductParser
              * pero HtmlDecode hace que el código sea tolerante
              * si todavía quedan entidades HTML.
              */
-            var analyticsJson =
-                WebUtility.HtmlDecode(
-                    encodedAnalyticsJson);
+            var analyticsJson = WebUtility.HtmlDecode(encodedAnalyticsJson);
 
             try
             {
-                using var analyticsDocument =
-                    JsonDocument.Parse(
-                        analyticsJson);
+                using var analyticsDocument = JsonDocument.Parse(analyticsJson);
 
-                var root =
-                    analyticsDocument.RootElement;
+                var root = analyticsDocument.RootElement;
 
-                if (!TryGetString(
-                        root,
-                        "category",
-                        out var categoryPath))
+                if (!TryGetString(root, "category", out var categoryPath))
                 {
                     continue;
                 }
 
                 var categories =
                     categoryPath
-                        .Split(
-                            '/',
-                            StringSplitOptions.RemoveEmptyEntries |
-                            StringSplitOptions.TrimEntries)
-                        .Where(category =>
-                            !string.IsNullOrWhiteSpace(
-                                category))
-                        .Distinct(
-                            StringComparer.OrdinalIgnoreCase)
-                        .ToArray();
+                        .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .Where(category => !string.IsNullOrWhiteSpace(category))
+                        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
                 if (categories.Length == 0)
                 {
                     continue;
                 }
 
-                var normalizedPath =
-                    NormalizeProductPath(
-                        productUrl);
+                var normalizedPath = NormalizeProductPath(productUrl);
 
-                result[normalizedPath] =
-                    categories;
+                result[normalizedPath] = categories;
             }
             catch (JsonException exception)
             {
-                Console.WriteLine(
-                    "No se pudo leer " +
-                    "data-gtm-product-click: " +
-                    exception.Message);
+                Console.WriteLine("No se pudo leer " + "data-gtm-product-click: " + exception.Message);
             }
         }
 
         return result;
     }
 
-    private static IElement?
-        FindProductItemList(
-            IDocument document)
+    private static IElement? FindProductItemList(IDocument document)
     {
-        var jsonLdElements =
-            document.QuerySelectorAll(
-                "script[type='application/ld+json']");
+        var jsonLdElements = document.QuerySelectorAll("script[type='application/ld+json']");
 
         foreach (var element in jsonLdElements)
         {
-            if (string.IsNullOrWhiteSpace(
-                    element.TextContent))
+            if (string.IsNullOrWhiteSpace(element.TextContent))
             {
                 continue;
             }
 
             try
             {
-                using var jsonDocument =
-                    JsonDocument.Parse(
-                        element.TextContent);
+                using var jsonDocument = JsonDocument.Parse(element.TextContent);
 
-                var root =
-                    jsonDocument.RootElement;
+                var root = jsonDocument.RootElement;
 
-                if (root.ValueKind !=
-                    JsonValueKind.Object)
+                if (root.ValueKind != JsonValueKind.Object)
                 {
                     continue;
                 }
 
-                if (TryGetString(
-                        root,
-                        "@type",
-                        out var type) &&
-                    string.Equals(
-                        type,
-                        "ItemList",
-                        StringComparison.OrdinalIgnoreCase))
+                if (TryGetString(root, "@type", out var type) && string.Equals(type, "ItemList", StringComparison.OrdinalIgnoreCase))
                 {
                     return element;
                 }
@@ -221,34 +150,18 @@ public sealed class JumboProductParser
         return null;
     }
 
-    private static IReadOnlyCollection<ProductOffer>
-        ParseProducts(
-            JsonElement root,
-            IReadOnlyDictionary<
-                string,
-                IReadOnlyCollection<string>>
-                categoriesByProductUrl)
+    private static IReadOnlyCollection<ProductOffer> ParseProducts(JsonElement root, IReadOnlyDictionary<string, IReadOnlyCollection<string>> categoriesByProductUrl)
     {
-        if (!root.TryGetProperty(
-                "itemListElement",
-                out var itemListElement) ||
-            itemListElement.ValueKind !=
-            JsonValueKind.Array)
+        if (!root.TryGetProperty("itemListElement", out var itemListElement) || itemListElement.ValueKind != JsonValueKind.Array)
         {
             return [];
         }
 
-        var offers =
-            new List<ProductOffer>();
+        var offers = new List<ProductOffer>();
 
-        foreach (
-            var listItem
-            in itemListElement.EnumerateArray())
+        foreach (var listItem in itemListElement.EnumerateArray())
         {
-            var offer =
-                TryCreateProductOffer(
-                    listItem,
-                    categoriesByProductUrl);
+            var offer = TryCreateProductOffer(listItem, categoriesByProductUrl);
 
             if (offer is not null)
             {
@@ -383,149 +296,94 @@ public sealed class JumboProductParser
         return new ProductOffer(
             name: name,
             price: price,
-            store: new Store(
-                code: "JUMBO",
-                name: "Jumbo"),
+            store: new Store(code: "JUMBO", name: "Jumbo"),
             productUrl: productUrl,
             imageUrl: imageUrl,
             brand: brand,
             sellerName: "Jumbo",
-            sellerType: "INTERNAL",
             categories: categories,
             availability: availability);
     }
 
-    private static bool TryCreateAbsoluteUri(
-        string value,
-        out Uri productUrl)
+    private static bool TryCreateAbsoluteUri(string value, out Uri productUrl)
     {
-        if (Uri.TryCreate(
-                value,
-                UriKind.Absolute,
-                out var absoluteUri))
+        if (Uri.TryCreate(value, UriKind.Absolute, out var absoluteUri))
         {
             productUrl = absoluteUri;
-
             return true;
         }
 
-        if (Uri.TryCreate(
-                JumboBaseUri,
-                value,
-                out var relativeUri))
+        if (Uri.TryCreate(JumboBaseUri, value, out var relativeUri))
         {
             productUrl = relativeUri;
-
             return true;
         }
 
         productUrl = null!;
-
         return false;
     }
 
-    private static string NormalizeProductPath(
-        string url)
+    private static string NormalizeProductPath(string url)
     {
-        if (Uri.TryCreate(
-                url,
-                UriKind.Absolute,
-                out var absoluteUri))
+        if (Uri.TryCreate(url, UriKind.Absolute, out var absoluteUri))
         {
-            return absoluteUri
-                .AbsolutePath
-                .TrimEnd('/');
+            return absoluteUri.AbsolutePath.TrimEnd('/');
         }
 
-        var pathWithoutQuery =
-            url.Split(
-                '?',
-                StringSplitOptions.RemoveEmptyEntries)[0];
+        var pathWithoutQuery = url.Split('?', StringSplitOptions.RemoveEmptyEntries)[0];
 
         if (!pathWithoutQuery.StartsWith('/'))
         {
-            pathWithoutQuery =
-                $"/{pathWithoutQuery}";
+            pathWithoutQuery = $"/{pathWithoutQuery}";
         }
 
-        return pathWithoutQuery
-            .TrimEnd('/');
+        return pathWithoutQuery.TrimEnd('/');
     }
 
-    private static string?
-        GetAvailability(
-            JsonElement offerElement)
+    private static string? GetAvailability(JsonElement offerElement)
     {
-        if (!TryGetString(
-                offerElement,
-                "availability",
-                out var availability))
+        if (!TryGetString(offerElement, "availability", out var availability))
         {
             return null;
         }
 
         return availability switch
         {
-            "https://schema.org/InStock" =>
-                "IN_STOCK",
-
-            "https://schema.org/OutOfStock" =>
-                "OUT_OF_STOCK",
-
-            _ =>
-                availability
+            "https://schema.org/InStock" => "IN_STOCK",
+            "https://schema.org/OutOfStock" => "OUT_OF_STOCK",
+            _ => availability
         };
     }
 
-    private static bool TryGetString(
-        JsonElement element,
-        string propertyName,
-        out string value)
+    private static bool TryGetString(JsonElement element, string propertyName, out string value)
     {
-        value =
-            string.Empty;
+        value = string.Empty;
 
-        if (!element.TryGetProperty(
-                propertyName,
-                out var property) ||
-            property.ValueKind !=
-            JsonValueKind.String)
+        if (!element.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String)
         {
             return false;
         }
 
-        var result =
-            property.GetString();
+        var result = property.GetString();
 
-        if (string.IsNullOrWhiteSpace(
-                result))
+        if (string.IsNullOrWhiteSpace(result))
         {
             return false;
         }
 
-        value =
-            result.Trim();
+        value = result.Trim();
 
         return true;
     }
 
-    private static bool TryGetDecimal(
-        JsonElement element,
-        string propertyName,
-        out decimal value)
+    private static bool TryGetDecimal(JsonElement element, string propertyName, out decimal value)
     {
         value = 0;
-
-        if (!element.TryGetProperty(
-                propertyName,
-                out var property) ||
-            property.ValueKind !=
-            JsonValueKind.Number)
+        if (!element.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.Number)
         {
             return false;
         }
 
-        return property.TryGetDecimal(
-            out value);
+        return property.TryGetDecimal(out value);
     }
 }

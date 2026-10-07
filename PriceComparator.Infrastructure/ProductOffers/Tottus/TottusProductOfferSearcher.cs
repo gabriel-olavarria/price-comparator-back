@@ -1,27 +1,34 @@
 using PriceComparator.Application.Interfaces.ProductOffers;
 using PriceComparator.Domain.Entities;
-using PriceComparator.Infrastructure.Browsers;
-using PriceComparator.Infrastructure.Snapshots;
+using PriceComparator.Infrastructure.Storage;
 
 namespace PriceComparator.Infrastructure.ProductOffers.Tottus;
 
-public sealed class TottusProductOfferSearcher
-    : IProductOfferSearcher
+public sealed class TottusProductOfferSearcher : IProductOfferSearcher
 {
-    private readonly PlaywrightHtmlBrowser _browser;
-    private readonly ISnapshotStore _snapshotStore;
+    private const string CategoryCatalogUrl =
+        "/tottus-cl/lista/CATG27292/Arroz";
+
+    private readonly HttpClient _httpClient;
     private readonly TottusProductParser _parser;
+    private readonly TottusCategoryParser _categoryParser;
+    private readonly TottusCategoryResolver _categoryResolver;
+    private readonly JsonProductStore _productStore;
 
     public string StoreCode => "Tottus";
 
     public TottusProductOfferSearcher(
-        PlaywrightHtmlBrowser browser,
-        ISnapshotStore snapshotStore,
-        TottusProductParser parser)
+        HttpClient httpClient,
+        TottusProductParser parser,
+        TottusCategoryParser categoryParser,
+        TottusCategoryResolver categoryResolver,
+        JsonProductStore productStore)
     {
-        _browser = browser;
-        _snapshotStore = snapshotStore;
+        _httpClient = httpClient;
         _parser = parser;
+        _categoryParser = categoryParser;
+        _categoryResolver = categoryResolver;
+        _productStore = productStore;
     }
 
     public async Task<IReadOnlyCollection<ProductOffer>> SearchAsync(
@@ -33,95 +40,150 @@ public sealed class TottusProductOfferSearcher
             return [];
         }
 
-        var html = await SearchLiveAsync(
+        query = query.Trim();
+
+        var storedProducts = await _productStore.GetAsync(
+            StoreCode,
             query,
             cancellationToken);
 
-        /*
-         * Si Tottus respondió con una página de protección de Cloudflare,
-         * no intentamos procesarla como si fuera una página de productos.
-         */
-        if (IsCloudflareChallenge(html))
+        if (storedProducts is not null)
         {
             Console.WriteLine(
-                "[TOTTUS] Challenge de Cloudflare detectado. " +
-                "Se devolverá una colección vacía.");
+                $"[TOTTUS] Usando productos almacenados: {storedProducts.Count}");
+
+            return storedProducts;
+        }
+
+        Console.WriteLine(
+            $"[TOTTUS] Resolviendo categoría para: {query}");
+
+        var catalogHtml = await GetHtmlAsync(
+            CategoryCatalogUrl,
+            cancellationToken);
+
+        var categories = _categoryParser.Parse(
+            catalogHtml);
+
+        var candidates = _categoryResolver.Resolve(
+            categories,
+            query);
+
+        if (candidates.Count == 0)
+        {
+            Console.WriteLine(
+                $"[TOTTUS] No se encontraron categorías para: {query}");
 
             return [];
         }
 
-        /*
-         * FileSnapshotStore decide internamente si corresponde guardar.
-         * En Production no escribirá archivos.
-         */
-        await _snapshotStore.SaveAsync(
-            StoreCode,
-            query,
-            html,
-            cancellationToken);
+        Console.WriteLine(
+            $"[TOTTUS] Categorías candidatas: {candidates.Count}");
 
-        var offers = await _parser.ParseAsync(
-            html,
-            cancellationToken);
+        foreach (var category in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            Console.WriteLine(
+                $"[TOTTUS] Probando categoría: " +
+                $"{category.Name} -> {category.Url}");
+
+            try
+            {
+                var categoryHtml = IsSameUrl(
+                    CategoryCatalogUrl,
+                    category.Url)
+                        ? catalogHtml
+                        : await GetHtmlAsync(
+                            category.Url,
+                            cancellationToken);
+
+                var offers = await _parser.ParseAsync(
+                    categoryHtml,
+                    cancellationToken);
+
+                Console.WriteLine(
+                    $"[TOTTUS] Productos encontrados en " +
+                    $"{category.Name}: {offers.Count}");
+
+                if (offers.Count == 0)
+                {
+                    Console.WriteLine(
+                        $"[TOTTUS] Categoría sin productos. " +
+                        $"Probando siguiente candidato.");
+
+                    continue;
+                }
+
+                await _productStore.SaveAsync(
+                    StoreCode,
+                    query,
+                    offers,
+                    cancellationToken);
+
+                Console.WriteLine(
+                    $"[TOTTUS] Categoría seleccionada: " +
+                    $"{category.Name}");
+
+                return offers;
+            }
+            catch (OperationCanceledException)
+                when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(
+                    $"[TOTTUS] Error consultando categoría " +
+                    $"{category.Name}: " +
+                    $"{exception.GetType().Name} - " +
+                    $"{exception.Message}");
+
+                Console.WriteLine(
+                    "[TOTTUS] Probando siguiente candidato.");
+            }
+        }
 
         Console.WriteLine(
-            $"[TOTTUS] Productos encontrados: {offers.Count}");
+            $"[TOTTUS] Ninguna categoría candidata entregó productos para: {query}");
 
-        return offers;
+        return [];
     }
 
-    private async Task<string> SearchLiveAsync(
-        string query,
+    private async Task<string> GetHtmlAsync(
+        string url,
         CancellationToken cancellationToken)
     {
-        var encodedQuery =
-            Uri.EscapeDataString(query.Trim());
+        Console.WriteLine(
+            $"[TOTTUS] Consultando: {url}");
 
-        var url =
-            $"https://www.tottus.cl/tottus-cl/buscar?Ntt={encodedQuery}";
+        using var response = await _httpClient.GetAsync(
+            url,
+            cancellationToken);
 
         Console.WriteLine(
-            $"[TOTTUS] Consultando tienda con Playwright: {url}");
+            $"[TOTTUS] HTTP {(int)response.StatusCode} " +
+            $"{response.StatusCode}");
 
-        return await _browser.GetHtmlAsync(
-            url,
-            cancellationToken,
-            waitAfterLoadMs: 0,
-            keepPageOpenMs: 0,
-            waitForNextData: false);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadAsStringAsync(
+            cancellationToken);
     }
 
-    private static bool IsCloudflareChallenge(
-        string html)
+    private bool IsSameUrl(
+        string firstUrl,
+        string secondUrl)
     {
-        if (string.IsNullOrWhiteSpace(html))
-        {
-            return false;
-        }
+        var first = new Uri(
+            _httpClient.BaseAddress!,
+            firstUrl);
 
-        var cloudflareDetected =
-            html.Contains(
-                "__cf_chl_",
-                StringComparison.OrdinalIgnoreCase)
-            ||
-            html.Contains(
-                "cf-chl-",
-                StringComparison.OrdinalIgnoreCase)
-            ||
-            html.Contains(
-                "challenge-platform",
-                StringComparison.OrdinalIgnoreCase)
-            ||
-            html.Contains(
-                "Just a moment",
-                StringComparison.OrdinalIgnoreCase);
+        var second = new Uri(
+            _httpClient.BaseAddress!,
+            secondUrl);
 
-        if (cloudflareDetected)
-        {
-            Console.WriteLine(
-                "[TOTTUS] Se detectaron indicadores de Cloudflare en el HTML.");
-        }
-
-        return cloudflareDetected;
+        return first == second;
     }
 }

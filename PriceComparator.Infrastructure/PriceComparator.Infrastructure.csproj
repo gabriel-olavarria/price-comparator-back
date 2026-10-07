@@ -26,10 +26,11 @@
     </ItemGroup>
     
     <ItemGroup>
-      <Folder Include="Snapshots\Data\Jumbo\" />
-      <Folder Include="Snapshots\Data\Lider\" />
-      <Folder Include="Snapshots\Data\tottus\" />
-      <Folder Include="Snapshots\Data\Unimarc\" />
+      <Folder Include="Storage\Data\Jumbo\" />
+      <Folder Include="Storage\Data\Lider\" />
+      <Folder Include="Storage\Data\santaisabel\" />
+      <Folder Include="Storage\Data\tottus\" />
+      <Folder Include="Storage\Data\Unimarc\" />
     </ItemGroup>
 
 </Project>

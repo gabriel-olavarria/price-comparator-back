@@ -19,6 +19,7 @@ public sealed class UnimarcProductParser
         var document = await parser.ParseDocumentAsync(html, cancellationToken);
         var productCards = document.QuerySelectorAll("section[id^='shelf__vertical--']");
         Console.WriteLine($"[UNIMARC] Tarjetas encontradas: {productCards.Length}");
+       
         var products = new List<ProductOffer>();
         foreach (var card in productCards)
         {
@@ -78,7 +79,6 @@ public sealed class UnimarcProductParser
             imageUrl: imageUrl,
             brand: brand,
             sellerName: "Unimarc",
-            sellerType: "INTERNAL",
             categories: [],
             availability: null);
     }

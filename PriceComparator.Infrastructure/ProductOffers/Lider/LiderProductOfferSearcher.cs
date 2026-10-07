@@ -1,26 +1,26 @@
 using PriceComparator.Application.Interfaces.ProductOffers;
 using PriceComparator.Domain.Entities;
 using PriceComparator.Infrastructure.Browsers;
-using PriceComparator.Infrastructure.Snapshots;
+using PriceComparator.Infrastructure.Storage;
 
 namespace PriceComparator.Infrastructure.ProductOffers.Lider;
 
 public sealed class LiderProductOfferSearcher : IProductOfferSearcher
 {
     private readonly PlaywrightHtmlBrowser _browser;
-    private readonly ISnapshotStore _snapshotStore;
     private readonly LiderProductParser _parser;
+    private readonly JsonProductStore _productStore;
 
     public string StoreCode => "Lider";
 
     public LiderProductOfferSearcher(
         PlaywrightHtmlBrowser browser,
-        ISnapshotStore snapshotStore,
-        LiderProductParser parser)
+        LiderProductParser parser,
+        JsonProductStore productStore)
     {
         _browser = browser;
-        _snapshotStore = snapshotStore;
         _parser = parser;
+        _productStore = productStore;
     }
 
     public async Task<IReadOnlyCollection<ProductOffer>> SearchAsync(
@@ -32,8 +32,26 @@ public sealed class LiderProductOfferSearcher : IProductOfferSearcher
             return [];
         }
 
+        var normalizedQuery = query.Trim();
+
+        var storedOffers = await _productStore.GetAsync(
+            StoreCode,
+            normalizedQuery,
+            cancellationToken);
+
+        if (storedOffers is not null)
+        {
+            Console.WriteLine(
+                $"[LIDER] Usando productos almacenados: {storedOffers.Count}");
+
+            return storedOffers;
+        }
+
+        Console.WriteLine(
+            "[LIDER] No hay datos almacenados vigentes. Consultando Lider.");
+
         var html = await SearchLiveAsync(
-            query,
+            normalizedQuery,
             cancellationToken);
 
         // Diagnóstico del HTML recibido desde Playwright
@@ -49,21 +67,21 @@ public sealed class LiderProductOfferSearcher : IProductOfferSearcher
         Console.WriteLine(
             $"[LIDER] searchResult: {html.Contains("searchResult")}");
 
-        await _snapshotStore.SaveAsync(
-            StoreCode,
-            query,
-            html,
-            cancellationToken);
-
-        Console.WriteLine(
-            $"[LIDER] Snapshot guardado: {query}");
-
         var offers = await _parser.ParseAsync(
             html,
             cancellationToken);
 
         Console.WriteLine(
             "[LIDER][SUCCESS] Obtención de datos correctamente desde Lider");
+
+        await _productStore.SaveAsync(
+            StoreCode,
+            normalizedQuery,
+            offers,
+            cancellationToken);
+
+        Console.WriteLine(
+            $"[LIDER] {offers.Count} productos guardados en JSON.");
 
         Console.WriteLine(
             $"[LIDER] Productos encontrados: {offers.Count}");
@@ -75,8 +93,8 @@ public sealed class LiderProductOfferSearcher : IProductOfferSearcher
         string query,
         CancellationToken cancellationToken)
     {
-        var encodedQuery = Uri.EscapeDataString(
-            query.Trim());
+        var encodedQuery =
+            Uri.EscapeDataString(query);
 
         var url =
             $"https://super.lider.cl/search?q={encodedQuery}";

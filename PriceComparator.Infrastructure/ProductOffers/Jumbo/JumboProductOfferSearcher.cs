@@ -1,26 +1,25 @@
 using PriceComparator.Application.Interfaces.ProductOffers;
 using PriceComparator.Domain.Entities;
-using PriceComparator.Infrastructure.Snapshots;
+using PriceComparator.Infrastructure.Storage;
 
 namespace PriceComparator.Infrastructure.ProductOffers.Jumbo;
 
-public sealed class JumboProductOfferSearcher
-    : IProductOfferSearcher
+public sealed class JumboProductOfferSearcher : IProductOfferSearcher
 {
     private readonly HttpClient _httpClient;
-    private readonly ISnapshotStore _snapshotStore;
     private readonly JumboProductParser _parser;
+    private readonly JsonProductStore _productStore;
 
     public string StoreCode => "Jumbo";
 
     public JumboProductOfferSearcher(
         HttpClient httpClient,
-        ISnapshotStore snapshotStore,
-        JumboProductParser parser)
+        JumboProductParser parser,
+        JsonProductStore productStore)
     {
         _httpClient = httpClient;
-        _snapshotStore = snapshotStore;
         _parser = parser;
+        _productStore = productStore;
     }
 
     public async Task<IReadOnlyCollection<ProductOffer>> SearchAsync(
@@ -32,22 +31,46 @@ public sealed class JumboProductOfferSearcher
             return [];
         }
 
-        var html = await SearchLiveAsync(
-            query,
-            cancellationToken);
+        var normalizedQuery =
+            query.Trim();
 
-        await _snapshotStore.SaveAsync(
+        var storedOffers =
+            await _productStore.GetAsync(
+                StoreCode,
+                normalizedQuery,
+                cancellationToken);
+
+        if (storedOffers is not null)
+        {
+            Console.WriteLine(
+                $"[JUMBO] Usando productos almacenados: " +
+                $"{storedOffers.Count}");
+
+            return storedOffers;
+        }
+
+        Console.WriteLine(
+            "[JUMBO] No hay datos almacenados vigentes. " +
+            "Consultando Jumbo.");
+
+        var html =
+            await SearchLiveAsync(
+                normalizedQuery,
+                cancellationToken);
+
+        var offers =
+            await _parser.ParseAsync(
+                html,
+                cancellationToken);
+
+        await _productStore.SaveAsync(
             StoreCode,
-            query,
-            html,
+            normalizedQuery,
+            offers,
             cancellationToken);
 
         Console.WriteLine(
-            $"[JUMBO] Snapshot guardado: {query}");
-
-        var offers = await _parser.ParseAsync(
-            html,
-            cancellationToken);
+            $"[JUMBO] {offers.Count} productos guardados en JSON.");
 
         Console.WriteLine(
             $"[JUMBO] Productos encontrados: {offers.Count}");
@@ -61,7 +84,7 @@ public sealed class JumboProductOfferSearcher
     {
         var encodedQuery =
             Uri.EscapeDataString(
-                query.Trim());
+                query);
 
         var requestUrl =
             $"/busqueda?ft={encodedQuery}";

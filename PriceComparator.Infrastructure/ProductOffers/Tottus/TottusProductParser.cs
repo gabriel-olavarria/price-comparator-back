@@ -142,70 +142,38 @@ public sealed class TottusProductParser
             .ToArray();
     }
 
-    private static ProductOffer?
-        TryCreateProductOffer(
-            JsonElement listItem)
+    private static ProductOffer? TryCreateProductOffer(JsonElement listItem)
     {
-        if (!listItem.TryGetProperty(
-                "item",
-                out var product) ||
-            product.ValueKind !=
-            JsonValueKind.Object)
+        if (!listItem.TryGetProperty("item", out var product) || product.ValueKind != JsonValueKind.Object)
         {
             return null;
         }
 
-        if (!TryGetString(
-                product,
-                "name",
-                out var name))
+        if (!TryGetString(product, "name", out var name))
         {
             return null;
         }
 
-        if (!TryGetString(
-                product,
-                "url",
-                out var productUrlText) ||
-            !Uri.TryCreate(
-                productUrlText,
-                UriKind.Absolute,
-                out var productUrl))
+        if (!TryGetString(product, "url", out var productUrlText) || !Uri.TryCreate(productUrlText, UriKind.Absolute, out var productUrl))
         {
             return null;
         }
 
         Uri? imageUrl = null;
 
-        if (TryGetString(
-                product,
-                "image",
-                out var imageUrlText))
+        if (TryGetString(product, "image", out var imageUrlText))
         {
-            Uri.TryCreate(
-                imageUrlText,
-                UriKind.Absolute,
-                out imageUrl);
+            Uri.TryCreate(imageUrlText, UriKind.Absolute, out imageUrl);
         }
 
         string? brand = null;
 
-        if (product.TryGetProperty(
-                "brand",
-                out var brandElement) &&
-            brandElement.ValueKind ==
-            JsonValueKind.Object &&
-            TryGetString(
-                brandElement,
-                "name",
-                out var brandName))
+        if (product.TryGetProperty("brand", out var brandElement) && brandElement.ValueKind == JsonValueKind.Object && TryGetString(brandElement, "name", out var brandName))
         {
             brand = brandName;
         }
 
-        if (!TryGetPrice(
-                product,
-                out var price))
+        if (!TryGetPrice(product, out var price))
         {
             return null;
         }
@@ -220,7 +188,6 @@ public sealed class TottusProductParser
             imageUrl: imageUrl,
             brand: brand,
             sellerName: "Tottus",
-            sellerType: "INTERNAL",
             categories: [],
             availability: null);
     }

@@ -21,9 +21,6 @@ public sealed class SearchProductOffersUseCase : ISearchProductOffersUseCase
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        Console.WriteLine(
-            $"Buscadores registrados: {_searchers.Count}");
-
         var query = request.Query.Trim();
 
         var categories = request.Categories
@@ -55,19 +52,12 @@ public sealed class SearchProductOffersUseCase : ISearchProductOffersUseCase
         {
             try
             {
-                Console.WriteLine(
-                    $"Ejecutando buscador: {searcher.GetType().Name}");
-
                 var offers = await searcher.SearchAsync(
                     searchTerm,
                     cancellationToken);
 
-                Console.WriteLine(
-                    $"Resultados obtenidos antes de filtrar: {offers.Count}");
-
                 var filteredOffers = FilterOffers(
                     offers,
-                    query,
                     categories);
 
                 var products = filteredOffers
@@ -82,9 +72,6 @@ public sealed class SearchProductOffersUseCase : ISearchProductOffersUseCase
             catch (OperationCanceledException)
                 when (cancellationToken.IsCancellationRequested)
             {
-                Console.WriteLine(
-                    $"Búsqueda cancelada durante la ejecución de {searcher.StoreCode}.");
-
                 throw;
             }
             catch (Exception exception)
@@ -108,22 +95,15 @@ public sealed class SearchProductOffersUseCase : ISearchProductOffersUseCase
 
     private static IReadOnlyCollection<ProductOffer> FilterOffers(
         IReadOnlyCollection<ProductOffer> offers,
-        string query,
         IReadOnlyCollection<string> categories)
     {
-        IEnumerable<ProductOffer> filteredOffers = offers;
-
-        if (!string.IsNullOrWhiteSpace(query))
+        if (categories.Count == 0)
         {
-            filteredOffers = filteredOffers.Where(offer =>
-                offer.Name.Contains(
-                    query,
-                    StringComparison.OrdinalIgnoreCase));
+            return offers;
         }
 
-        if (categories.Count > 0)
-        {
-            filteredOffers = filteredOffers.Where(offer =>
+        return offers
+            .Where(offer =>
                 categories.Any(selectedCategory =>
                     offer.Categories.Any(productCategory =>
                         productCategory.Contains(
@@ -131,10 +111,8 @@ public sealed class SearchProductOffersUseCase : ISearchProductOffersUseCase
                             StringComparison.OrdinalIgnoreCase) ||
                         selectedCategory.Contains(
                             productCategory,
-                            StringComparison.OrdinalIgnoreCase))));
-        }
-
-        return filteredOffers.ToArray();
+                            StringComparison.OrdinalIgnoreCase))))
+            .ToArray();
     }
 
     private static ProductOfferResult MapToResult(
@@ -147,10 +125,6 @@ public sealed class SearchProductOffersUseCase : ISearchProductOffersUseCase
             ProductUrl: offer.ProductUrl.ToString(),
             ImageUrl: offer.ImageUrl?.ToString(),
             Brand: offer.Brand,
-            SellerName: offer.SellerName,
-            IsMarketplace: !string.Equals(
-                offer.SellerType,
-                "INTERNAL",
-                StringComparison.OrdinalIgnoreCase));
+            SellerName: offer.SellerName);
     }
 }

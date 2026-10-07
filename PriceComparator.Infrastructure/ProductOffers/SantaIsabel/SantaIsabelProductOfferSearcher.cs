@@ -1,24 +1,23 @@
 using PriceComparator.Application.Interfaces.ProductOffers;
 using PriceComparator.Domain.Entities;
-using PriceComparator.Infrastructure.Browsers;
 using PriceComparator.Infrastructure.Storage;
 
-namespace PriceComparator.Infrastructure.ProductOffers.Unimarc;
+namespace PriceComparator.Infrastructure.ProductOffers.SantaIsabel;
 
-public sealed class UnimarcProductOfferSearcher : IProductOfferSearcher
+public sealed class SantaIsabelProductOfferSearcher : IProductOfferSearcher
 {
-    private readonly PlaywrightHtmlBrowser _browser;
-    private readonly UnimarcProductParser _parser;
+    private readonly HttpClient _httpClient;
+    private readonly SantaIsabelProductParser _parser;
     private readonly JsonProductStore _productStore;
 
-    public string StoreCode => "Unimarc";
+    public string StoreCode => "SantaIsabel";
 
-    public UnimarcProductOfferSearcher(
-        PlaywrightHtmlBrowser browser,
-        UnimarcProductParser parser,
+    public SantaIsabelProductOfferSearcher(
+        HttpClient httpClient,
+        SantaIsabelProductParser parser,
         JsonProductStore productStore)
     {
-        _browser = browser;
+        _httpClient = httpClient;
         _parser = parser;
         _productStore = productStore;
     }
@@ -42,13 +41,13 @@ public sealed class UnimarcProductOfferSearcher : IProductOfferSearcher
         if (storedOffers is not null)
         {
             Console.WriteLine(
-                $"[UNIMARC] Usando productos almacenados: {storedOffers.Count}");
+                $"[SANTA ISABEL] Usando productos almacenados: {storedOffers.Count}");
 
             return storedOffers;
         }
 
         Console.WriteLine(
-            "[UNIMARC] No hay datos almacenados vigentes. Consultando Unimarc.");
+            "[SANTA ISABEL] No hay datos almacenados vigentes. Consultando Santa Isabel.");
 
         var html = await SearchLiveAsync(
             normalizedQuery,
@@ -65,10 +64,10 @@ public sealed class UnimarcProductOfferSearcher : IProductOfferSearcher
             cancellationToken);
 
         Console.WriteLine(
-            $"[UNIMARC] {offers.Count} productos guardados en JSON.");
+            $"[SANTA ISABEL] {offers.Count} productos guardados en JSON.");
 
         Console.WriteLine(
-            $"[UNIMARC] Productos encontrados: {offers.Count}");
+            $"[SANTA ISABEL] Productos encontrados: {offers.Count}");
 
         return offers;
     }
@@ -77,23 +76,24 @@ public sealed class UnimarcProductOfferSearcher : IProductOfferSearcher
         string query,
         CancellationToken cancellationToken)
     {
-        var normalizedQuery = query
-            .Trim()
-            .Replace(" ", "-");
+        var encodedQuery = Uri.EscapeDataString(query);
 
-        var encodedQuery =
-            Uri.EscapeDataString(normalizedQuery);
-
-        var url =
-            $"https://www.unimarc.cl/search?q={encodedQuery}";
+        var requestUrl =
+            $"/busqueda?ft={encodedQuery}";
 
         Console.WriteLine(
-            $"[UNIMARC] Consultando tienda: {url}");
+            $"[SANTA ISABEL] Consultando: {requestUrl}");
 
-        return await _browser.GetHtmlAsync(
-            url,
-            cancellationToken,
-            waitAfterLoadMs: 5000,
-            keepPageOpenMs: 0);
+        using var response = await _httpClient.GetAsync(
+            requestUrl,
+            cancellationToken);
+
+        Console.WriteLine(
+            $"[SANTA ISABEL] HTTP {(int)response.StatusCode} {response.StatusCode}");
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadAsStringAsync(
+            cancellationToken);
     }
 }

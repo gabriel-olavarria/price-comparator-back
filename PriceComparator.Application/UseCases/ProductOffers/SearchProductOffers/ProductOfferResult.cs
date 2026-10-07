@@ -7,5 +7,4 @@ public sealed record ProductOfferResult(
     string ProductUrl,
     string? ImageUrl,
     string? Brand,
-    string? SellerName,
-    bool IsMarketplace);
+    string? SellerName);
