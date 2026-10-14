@@ -1,0 +1,580 @@
+[
+  {
+    "id": "arroz",
+    "category": "Abarrotes",
+    "aliases": [
+      "arroz",
+      "arroces"
+    ],
+    "phrases": [
+      "arroz integral",
+      "arroz basmati",
+      "arroz jazmin",
+      "arroz pregraneado",
+      "arroz grado 1",
+      "arroz grado 2"
+    ],
+    "subtypes": [
+      {
+        "id": "preparado-chaufan",
+        "terms": ["chaufan"]
+      },
+      {
+        "id": "preparado-curry",
+        "terms": ["curry"]
+      },
+      {
+        "id": "preparado-primavera",
+        "terms": ["primavera"]
+      },
+      {
+        "id": "preparado-campesino",
+        "terms": ["campesino"]
+      },
+      {
+        "id": "preparado-champinon",
+        "terms": ["champinon", "champinones"]
+      },
+      {
+        "id": "preparado-arabe",
+        "terms": ["arabe"]
+      },
+      {
+        "id": "paella",
+        "terms": ["paella"]
+      },
+      {
+        "id": "sushi",
+        "terms": ["sushi"]
+      },
+      {
+        "id": "integral",
+        "terms": ["integral"]
+      },
+      {
+        "id": "risotto",
+        "terms": ["risotto"]
+      },
+      {
+        "id": "basmati",
+        "terms": ["basmati"]
+      },
+      {
+        "id": "preparado-wok",
+        "terms": ["wok"]
+      },
+      {
+        "id": "preparado",
+        "terms": ["pregraneado", "preparado"]
+      },
+      {
+        "id": "grado-1",
+        "terms": ["grado 1", "g1"]
+      },
+      {
+        "id": "grado-2",
+        "terms": ["grado 2", "g2"]
+      }
+    ],
+    "headTerms": [
+      "arroz",
+      "arroces"
+    ]
+  },
+  {
+    "id": "pastas",
+    "category": "Abarrotes",
+    "aliases": [
+      "pasta",
+      "pastas",
+      "fideo",
+      "fideos",
+      "tallarin",
+      "tallarines",
+      "spaghetti",
+      "espagueti",
+      "espaguetis",
+      "fettuccine",
+      "fetuccine",
+      "fetuccini",
+      "linguine",
+      "penne",
+      "rigatoni",
+      "macarron",
+      "macarrones"
+    ],
+    "phrases": [
+      "fideos de arroz",
+      "pasta de arroz"
+    ],
+    "headTerms": [
+      "pasta",
+      "pastas",
+      "fideo",
+      "fideos",
+      "tallarin",
+      "tallarines",
+      "spaghetti",
+      "espagueti",
+      "espaguetis",
+      "fettuccine",
+      "fetuccine",
+      "fetuccini",
+      "linguine",
+      "penne",
+      "rigatoni",
+      "macarron",
+      "macarrones"
+    ]
+  },
+  {
+    "id": "sopas",
+    "category": "Abarrotes",
+    "aliases": [
+      "sopa",
+      "sopas",
+      "caldo",
+      "caldos"
+    ],
+    "phrases": [
+      "sopa instantanea",
+      "sopa de pollo",
+      "sopa de verduras",
+      "caldo en polvo"
+    ],
+    "headTerms": [
+      "sopa",
+      "sopas",
+      "caldo",
+      "caldos"
+    ]
+  },
+  {
+    "id": "leches",
+    "category": "Lacteos",
+    "aliases": [
+      "leche",
+      "leches"
+    ],
+    "phrases": [],
+    "headTerms": [
+      "leche",
+      "leches"
+    ]
+  },
+  {
+    "id": "bebidas",
+    "category": "Bebidas y Licores",
+    "aliases": [
+      "bebida",
+      "bebidas",
+      "gaseosa",
+      "gaseosas"
+    ],
+    "phrases": [
+      "bebida de arroz",
+      "bebida vegetal"
+    ],
+    "headTerms": [
+      "bebida",
+      "bebidas",
+      "gaseosa",
+      "gaseosas"
+    ]
+  },
+  {
+    "id": "bebidas-energeticas",
+    "category": "Bebidas y Licores",
+    "defaultSubtype": "original",
+    "aliases": [
+      "bebida energetica",
+      "bebidas energeticas",
+      "energetica",
+      "energeticas"
+    ],
+    "phrases": [
+      "bebida energetica",
+      "bebidas energeticas"
+    ],
+    "subtypes": [
+      {
+        "id": "sin-azucar",
+        "terms": ["sin azucar", "sugar free", "sugarfree"]
+      },
+      {
+        "id": "zero",
+        "terms": ["zero", "zero sugar"]
+      },
+      {
+        "id": "tropical",
+        "terms": ["tropical"]
+      },
+      {
+        "id": "acai",
+        "terms": ["acai", "açai"]
+      },
+      {
+        "id": "sandia",
+        "terms": ["sandia"]
+      },
+      {
+        "id": "arandano",
+        "terms": ["arandano", "arandanos"]
+      },
+      {
+        "id": "dragon-fruit",
+        "terms": ["dragon fruit", "fruta del dragon"]
+      },
+      {
+        "id": "pomelo",
+        "terms": ["pomelo", "pomelo floral"]
+      },
+      {
+        "id": "curuba-sauco",
+        "terms": ["curuba", "sauco"]
+      },
+      {
+        "id": "frutos-bosque",
+        "terms": ["summer", "frutos del bosque"]
+      }
+    ],
+    "headTerms": [
+      "bebida energetica",
+      "bebidas energeticas",
+      "energetica",
+      "energeticas"
+    ]
+  },
+  {
+    "id": "jugos",
+    "category": "Bebidas y Licores",
+    "aliases": [
+      "jugo",
+      "jugos",
+      "nectar",
+      "nectares"
+    ],
+    "phrases": [],
+    "headTerms": [
+      "jugo",
+      "jugos",
+      "nectar",
+      "nectares"
+    ]
+  },
+  {
+    "id": "cereales",
+    "category": "Abarrotes",
+    "aliases": [
+      "cereal",
+      "cereales"
+    ],
+    "phrases": [],
+    "headTerms": [
+      "cereal",
+      "cereales"
+    ]
+  },
+  {
+    "id": "harinas",
+    "category": "Abarrotes",
+    "defaultSubtype": "general",
+    "aliases": [
+      "harina",
+      "harinas"
+    ],
+    "phrases": [],
+    "subtypes": [
+      {
+        "id": "arroz",
+        "terms": ["harina de arroz", "harina arroz"]
+      },
+      {
+        "id": "maiz",
+        "terms": ["harina de maiz", "harina maiz"]
+      },
+      {
+        "id": "avena",
+        "terms": ["harina de avena", "harina avena"]
+      },
+      {
+        "id": "centeno",
+        "terms": ["harina de centeno", "harina centeno"]
+      },
+      {
+        "id": "linaza",
+        "terms": ["harina de linaza", "harina linaza"]
+      },
+      {
+        "id": "coco",
+        "terms": ["harina de coco", "harina coco"]
+      },
+      {
+        "id": "almendra",
+        "terms": ["harina de almendra", "harina almendra"]
+      },
+      {
+        "id": "nuez",
+        "terms": ["harina de nuez", "harina nuez"]
+      },
+      {
+        "id": "sarraceno",
+        "terms": ["sarraceno"]
+      },
+      {
+        "id": "multicereal",
+        "terms": ["multicereal"]
+      },
+      {
+        "id": "tostada",
+        "terms": ["tostada"]
+      },
+      {
+        "id": "integral",
+        "terms": ["integral"]
+      },
+      {
+        "id": "fuerza",
+        "terms": ["de fuerza", "harina fuerza"]
+      },
+      {
+        "id": "reposteria",
+        "terms": ["reposteria", "cake"]
+      },
+      {
+        "id": "panaderia",
+        "terms": ["panaderia", "bake"]
+      },
+      {
+        "id": "multiproposito",
+        "terms": ["multiproposito", "todo uso"]
+      },
+      {
+        "id": "sin-polvos",
+        "terms": ["sin polvos", "sin polvo"]
+      },
+      {
+        "id": "con-polvos",
+        "terms": ["con polvos", "con polvo"]
+      }
+    ],
+    "headTerms": [
+      "harina",
+      "harinas"
+    ]
+  },
+  {
+    "id": "aceites",
+    "category": "Abarrotes",
+    "defaultSubtype": "vegetal",
+    "aliases": [
+      "aceite",
+      "aceites"
+    ],
+    "phrases": [],
+    "subtypes": [
+      {
+        "id": "pepita-uva",
+        "terms": ["pepita uva", "pepita de uva"]
+      },
+      {
+        "id": "palta",
+        "terms": ["palta"]
+      },
+      {
+        "id": "canola",
+        "terms": ["canola"]
+      },
+      {
+        "id": "maravilla",
+        "terms": ["maravilla"]
+      },
+      {
+        "id": "maiz",
+        "terms": ["maiz"]
+      },
+      {
+        "id": "coco",
+        "terms": ["coco"]
+      },
+      {
+        "id": "oliva-extra-virgen",
+        "terms": [
+          "oliva extra virgen",
+          "oliva extra-virgen",
+          "aceite de oliva extra virgen",
+          "aceite oliva extra virgen"
+        ]
+      },
+      {
+        "id": "oliva",
+        "terms": ["oliva"]
+      },
+      {
+        "id": "spray",
+        "terms": ["spray", "aerosol"]
+      },
+      {
+        "id": "vegetal",
+        "terms": ["vegetal"]
+      }
+    ],
+    "headTerms": [
+      "aceite",
+      "aceites"
+    ]
+  },
+  {
+    "id": "sazonadores",
+    "aliases": [
+      "sazonador",
+      "sazonadores",
+      "condimento",
+      "condimentos"
+    ],
+    "phrases": [],
+    "headTerms": [
+      "sazonador",
+      "sazonadores",
+      "condimento",
+      "condimentos"
+    ]
+  },
+  {
+    "id": "salsas",
+    "category": "Abarrotes",
+    "defaultSubtype": "general",
+    "aliases": [
+      "salsa",
+      "salsas"
+    ],
+    "phrases": [],
+    "subtypes": [
+      {
+        "id": "bolonesa",
+        "terms": ["bolonesa", "bolognesa", "bolognese"]
+      },
+      {
+        "id": "arrabbiata",
+        "terms": ["arrabbiata", "arrabiata"]
+      },
+      {
+        "id": "napolitana",
+        "terms": ["napolitana", "napoletana"]
+      },
+      {
+        "id": "mediterranea",
+        "terms": ["mediterranea"]
+      },
+      {
+        "id": "passata",
+        "terms": ["passata"]
+      },
+      {
+        "id": "pizza",
+        "terms": ["pizza"]
+      },
+      {
+        "id": "tuco",
+        "terms": ["tuco"]
+      },
+      {
+        "id": "casera",
+        "terms": ["casera"]
+      },
+      {
+        "id": "pesto",
+        "terms": ["pesto"]
+      },
+      {
+        "id": "champinon",
+        "terms": ["champinon", "champinones"]
+      },
+      {
+        "id": "parmesana",
+        "terms": ["parmesana", "parmiggiano", "parmesano"]
+      },
+      {
+        "id": "con-trozos",
+        "terms": ["con trozos", "trozos de tomate"]
+      },
+      {
+        "id": "marinara",
+        "terms": ["marinara"]
+      },
+      {
+        "id": "carne",
+        "terms": ["carne"]
+      },
+      {
+        "id": "pollo",
+        "terms": ["pollo"]
+      },
+      {
+        "id": "albahaca",
+        "terms": ["albahaca", "basilico"]
+      },
+      {
+        "id": "oliva",
+        "terms": ["oliva"]
+      },
+      {
+        "id": "italiana",
+        "terms": ["italiana"]
+      },
+      {
+        "id": "pomarola",
+        "terms": ["pomarola"]
+      },
+      {
+        "id": "natural",
+        "terms": ["natural", "tradicional"]
+      }
+    ],
+    "headTerms": [
+      "salsa",
+      "salsas"
+    ]
+  },
+  {
+    "id": "alimento-mascotas",
+    "category": "Mascotas",
+    "aliases": [
+      "alimento mascota",
+      "alimento mascotas",
+      "comida mascota",
+      "comida mascotas"
+    ],
+    "phrases": [],
+    "headTerms": [
+      "alimento",
+      "comida"
+    ]
+  },
+  {
+    "id": "papel-higienico",
+    "category": "Cuidado Personal",
+    "aliases": [
+      "papel higienico"
+    ],
+    "phrases": [
+      "papel higienico"
+    ],
+    "headTerms": [
+      "papel higienico"
+    ]
+  },
+  {
+    "id": "chocolate",
+    "category": "Chocolates, Galletas y Snacks",
+    "aliases": [
+      "chocolate",
+      "chocolates"
+    ],
+    "phrases": [],
+    "headTerms": [
+      "chocolate",
+      "chocolates"
+    ]
+  }
+]

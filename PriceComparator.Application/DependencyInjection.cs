@@ -1,14 +1,29 @@
 using Microsoft.Extensions.DependencyInjection;
-using PriceComparator.Application.UseCases.ProductOffers.SearchProductOffers;
+using PriceComparator.Application.Interfaces;
 
 namespace PriceComparator.Application;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddApplication(
-        this IServiceCollection services)
+    public static IServiceCollection AddApplication(this IServiceCollection services)
     {
-        services.AddScoped<ISearchProductOffersUseCase, SearchProductOffersUseCase>();
+        services.Scan(scan => scan
+            .FromAssemblies(typeof(DependencyInjection).Assembly)
+
+            .AddClasses(classes =>
+                classes.AssignableTo<IScopedDependency>())
+            .AsSelfWithInterfaces()
+            .WithScopedLifetime()
+
+            .AddClasses(classes =>
+                classes.AssignableTo<ITransientDependency>())
+            .AsSelfWithInterfaces()
+            .WithTransientLifetime()
+
+            .AddClasses(classes =>
+                classes.AssignableTo<ISingletonDependency>())
+            .AsSelfWithInterfaces()
+            .WithSingletonLifetime());
 
         return services;
     }

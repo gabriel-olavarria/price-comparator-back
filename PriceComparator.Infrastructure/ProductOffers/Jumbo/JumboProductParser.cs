@@ -2,25 +2,23 @@ using System.Net;
 using System.Text.Json;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
+using PriceComparator.Application.Interfaces;
 using PriceComparator.Domain.Entities;
+using PriceComparator.Domain.ValueObjects;
 
 namespace PriceComparator.Infrastructure.ProductOffers.Jumbo;
 
-public sealed class JumboProductParser
+public sealed class JumboProductParser : ISingletonDependency
 {
     private static readonly Uri JumboBaseUri = new("https://www.jumbo.cl");
 
-    public async Task<IReadOnlyCollection<ProductOffer>> ParseAsync(
-        string html,
-        CancellationToken cancellationToken = default)
-    {
+    public async Task<IReadOnlyCollection<Product>> ParseAsync(string html, CancellationToken cancellationToken = default) {
         if (string.IsNullOrWhiteSpace(html))
         {
             return [];
         }
 
         var parser = new HtmlParser();
-
         var document = await parser.ParseDocumentAsync(html, cancellationToken);
 
         /*
@@ -54,7 +52,6 @@ public sealed class JumboProductParser
     private static IReadOnlyDictionary<string, IReadOnlyCollection<string>> GetCategoriesByProductUrl(IDocument document)
     {
         var result = new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase);
-
         var productLinks = document.QuerySelectorAll("a[data-gtm-product-click][href]");
 
         foreach (var productLink in productLinks)
@@ -79,7 +76,6 @@ public sealed class JumboProductParser
             try
             {
                 using var analyticsDocument = JsonDocument.Parse(analyticsJson);
-
                 var root = analyticsDocument.RootElement;
 
                 if (!TryGetString(root, "category", out var categoryPath))
@@ -87,8 +83,7 @@ public sealed class JumboProductParser
                     continue;
                 }
 
-                var categories =
-                    categoryPath
+                var categories = categoryPath
                         .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                         .Where(category => !string.IsNullOrWhiteSpace(category))
                         .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -125,9 +120,8 @@ public sealed class JumboProductParser
             try
             {
                 using var jsonDocument = JsonDocument.Parse(element.TextContent);
-
                 var root = jsonDocument.RootElement;
-
+                
                 if (root.ValueKind != JsonValueKind.Object)
                 {
                     continue;
@@ -150,14 +144,14 @@ public sealed class JumboProductParser
         return null;
     }
 
-    private static IReadOnlyCollection<ProductOffer> ParseProducts(JsonElement root, IReadOnlyDictionary<string, IReadOnlyCollection<string>> categoriesByProductUrl)
+    private static IReadOnlyCollection<Product> ParseProducts(JsonElement root, IReadOnlyDictionary<string, IReadOnlyCollection<string>> categoriesByProductUrl)
     {
         if (!root.TryGetProperty("itemListElement", out var itemListElement) || itemListElement.ValueKind != JsonValueKind.Array)
         {
             return [];
         }
 
-        var offers = new List<ProductOffer>();
+        var offers = new List<Product>();
 
         foreach (var listItem in itemListElement.EnumerateArray())
         {
@@ -170,102 +164,52 @@ public sealed class JumboProductParser
         }
 
         return offers
-            .GroupBy(
-                offer => offer.ProductUrl)
-            .Select(
-                group => group.First())
+            .GroupBy(offer => offer.ProductUrl)
+            .Select(group => group.First())
             .ToArray();
     }
 
-    private static ProductOffer?
-        TryCreateProductOffer(
-            JsonElement listItem,
-            IReadOnlyDictionary<
-                string,
-                IReadOnlyCollection<string>>
-                categoriesByProductUrl)
-    {
-        if (!listItem.TryGetProperty(
-                "item",
-                out var product) ||
-            product.ValueKind !=
-            JsonValueKind.Object)
+    private static Product? TryCreateProductOffer(JsonElement listItem, IReadOnlyDictionary<string, IReadOnlyCollection<string>> categoriesByProductUrl) {
+        
+        if (!listItem.TryGetProperty("item", out var product) || product.ValueKind != JsonValueKind.Object)
         {
             return null;
         }
 
-        if (!TryGetString(
-                product,
-                "name",
-                out var name))
-        {
+        if (!TryGetString(product, "name", out var name)) {
             return null;
         }
 
-        if (!TryGetString(
-                product,
-                "url",
-                out var productUrlText))
-        {
+        if (!TryGetString(product, "url", out var productUrlText)) {
             return null;
         }
 
-        if (!TryCreateAbsoluteUri(
-                productUrlText,
-                out var productUrl))
+        if (!TryCreateAbsoluteUri(productUrlText, out var productUrl))
         {
             return null;
         }
 
         Uri? imageUrl = null;
 
-        if (TryGetString(
-                product,
-                "image",
-                out var imageUrlText))
-        {
-            Uri.TryCreate(
-                imageUrlText,
-                UriKind.Absolute,
-                out imageUrl);
+        if (TryGetString(product, "image", out var imageUrlText)) {
+            Uri.TryCreate(imageUrlText, UriKind.Absolute, out imageUrl);
         }
 
         string? brand = null;
 
-        if (product.TryGetProperty(
-                "brand",
-                out var brandElement) &&
-            brandElement.ValueKind ==
-            JsonValueKind.Object &&
-            TryGetString(
-                brandElement,
-                "name",
-                out var brandName))
-        {
+        if (product.TryGetProperty("brand", out var brandElement) && brandElement.ValueKind == JsonValueKind.Object && TryGetString(brandElement, "name", out var brandName)) {
             brand = brandName;
         }
 
-        if (!product.TryGetProperty(
-                "offers",
-                out var offerElement) ||
-            offerElement.ValueKind !=
-            JsonValueKind.Object)
-        {
+        if (!product.TryGetProperty("offers", out var offerElement) || offerElement.ValueKind != JsonValueKind.Object) {
             return null;
         }
 
-        if (!TryGetDecimal(
-                offerElement,
-                "price",
-                out var price) ||
-            price <= 0)
-        {
+        if (!TryGetDecimal(offerElement, "price", out var price) || price <= 0) {
             return null;
         }
 
-        var availability =
-            GetAvailability(
-                offerElement);
+        var availability = GetAvailability(offerElement);
 
         /*
          * El JSON-LD entrega una URL absoluta:
@@ -278,25 +222,17 @@ public sealed class JumboProductParser
          *
          * Normalizamos ambos para poder relacionarlos.
          */
-        var normalizedProductPath =
-            NormalizeProductPath(
-                productUrl.AbsolutePath);
+        var normalizedProductPath = NormalizeProductPath(productUrl.AbsolutePath);
+        IReadOnlyCollection<string> categories = [];
 
-        IReadOnlyCollection<string>
-            categories = [];
-
-        if (categoriesByProductUrl.TryGetValue(
-                normalizedProductPath,
-                out var productCategories))
-        {
-            categories =
-                productCategories;
+        if (categoriesByProductUrl.TryGetValue(normalizedProductPath, out var productCategories)) {
+            categories = productCategories;
         }
-
-        return new ProductOffer(
+        var store = new Store { Code = "UNIMARC", Name = "Unimarc" };
+        return new Product(
             name: name,
             price: price,
-            store: new Store(code: "JUMBO", name: "Jumbo"),
+            store: store,
             productUrl: productUrl,
             imageUrl: imageUrl,
             brand: brand,

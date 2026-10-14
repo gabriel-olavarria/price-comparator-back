@@ -1,24 +1,19 @@
+using PriceComparator.Application.Interfaces;
+
 namespace PriceComparator.Infrastructure.ProductOffers.Tottus;
 
-public sealed class TottusCategoryResolver
+public sealed class TottusCategoryResolver : ISingletonDependency
 {
-    public IReadOnlyCollection<TottusCategory> Resolve(
-        IReadOnlyCollection<TottusCategory> categories,
-        string query)
+    public IReadOnlyCollection<TottusCategory> Resolve(IReadOnlyCollection<TottusCategory> categories, string query)
     {
-        if (categories.Count == 0 ||
-            string.IsNullOrWhiteSpace(query))
+        if (categories.Count == 0 || string.IsNullOrWhiteSpace(query))
         {
             return [];
         }
 
         var normalizedQuery = query.Trim();
-
         var exactMatches = categories
-            .Where(category =>
-                category.Name.Equals(
-                    normalizedQuery,
-                    StringComparison.OrdinalIgnoreCase))
+            .Where(category => category.Name.Equals(normalizedQuery, StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
         if (exactMatches.Length > 0)
@@ -27,10 +22,7 @@ public sealed class TottusCategoryResolver
         }
 
         return categories
-            .Where(category =>
-                category.Name.Contains(
-                    normalizedQuery,
-                    StringComparison.OrdinalIgnoreCase))
+            .Where(category => category.Name.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase))
             .ToArray();
     }
 }

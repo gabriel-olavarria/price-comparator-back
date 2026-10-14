@@ -1,15 +1,17 @@
 using System.Globalization;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
+using PriceComparator.Application.Interfaces;
 using PriceComparator.Domain.Entities;
+using PriceComparator.Domain.ValueObjects;
 
 namespace PriceComparator.Infrastructure.ProductOffers.Unimarc;
 
-public sealed class UnimarcProductParser
+public sealed class UnimarcProductParser : ISingletonDependency
 {
     private static readonly Uri BaseUri = new("https://www.unimarc.cl");
 
-    public async Task<IReadOnlyCollection<ProductOffer>> ParseAsync(string html, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyCollection<Product>> ParseAsync(string html, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(html))
         {
@@ -20,7 +22,7 @@ public sealed class UnimarcProductParser
         var productCards = document.QuerySelectorAll("section[id^='shelf__vertical--']");
         Console.WriteLine($"[UNIMARC] Tarjetas encontradas: {productCards.Length}");
        
-        var products = new List<ProductOffer>();
+        var products = new List<Product>();
         foreach (var card in productCards)
         {
             var product = TryCreateProductOffer(card);
@@ -34,7 +36,7 @@ public sealed class UnimarcProductParser
         return products.GroupBy(product => product.ProductUrl) .Select(group => group.First()) .ToArray();
     }
 
-    private static ProductOffer? TryCreateProductOffer(IElement card)
+    private static Product? TryCreateProductOffer(IElement card)
     {
         var nameElement = card.QuerySelector("p[class*='Shelf_nameProduct__']");
         var brandElement = card.QuerySelector("p[class*='Shelf_brandText__']");
@@ -69,9 +71,9 @@ public sealed class UnimarcProductParser
             Uri.TryCreate(imageSource, UriKind.Absolute, out imageUrl);
         }
         var brand = brandElement?.TextContent.Trim();
-        var store = new Store( code: "UNIMARC", name: "Unimarc");
 
-        return new ProductOffer(
+        var store = new Store { Code = "UNIMARC", Name = "Unimarc" };
+        return new Product(
             name: name,
             price: price,
             store: store,

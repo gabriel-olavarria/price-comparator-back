@@ -3,15 +3,15 @@ using System.Net;
 using System.Text.Json;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
+using PriceComparator.Application.Interfaces;
 using PriceComparator.Domain.Entities;
+using PriceComparator.Domain.ValueObjects;
 
 namespace PriceComparator.Infrastructure.ProductOffers.Tottus;
 
-public sealed class TottusProductParser
+public sealed class TottusProductParser: ISingletonDependency
 {
-    public async Task<IReadOnlyCollection<ProductOffer>> ParseAsync(
-        string html,
-        CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyCollection<Product>> ParseAsync(string html, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(html))
         {
@@ -19,80 +19,45 @@ public sealed class TottusProductParser
         }
 
         var parser = new HtmlParser();
-
-        var document = await parser.ParseDocumentAsync(
-            html,
-            cancellationToken);
-
+        var document = await parser.ParseDocumentAsync(html, cancellationToken);
         var jsonLdElement = FindProductItemList(document);
 
-        if (jsonLdElement is null ||
-            string.IsNullOrWhiteSpace(jsonLdElement.TextContent))
+        if (jsonLdElement is null || string.IsNullOrWhiteSpace(jsonLdElement.TextContent))
         {
-            Console.WriteLine(
-                "No se encontró el JSON-LD ItemList de Tottus.");
-
+            Console.WriteLine("No se encontró el JSON-LD ItemList de Tottus.");
             return [];
         }
 
-        var json =
-            WebUtility.HtmlDecode(
-                jsonLdElement.TextContent);
-
-        using var jsonDocument =
-            JsonDocument.Parse(json);
-
-        var offers =
-            ParseProducts(
-                jsonDocument.RootElement);
-
-        Console.WriteLine(
-            $"Productos extraídos desde Tottus: {offers.Count}");
-
+        var json = WebUtility.HtmlDecode(jsonLdElement.TextContent);
+        using var jsonDocument = JsonDocument.Parse(json);
+        var offers = ParseProducts(jsonDocument.RootElement);
+        Console.WriteLine($"Productos extraídos desde Tottus: {offers.Count}");
         return offers;
     }
 
-    private static IElement? FindProductItemList(
-        IDocument document)
+    private static IElement? FindProductItemList(IDocument document)
     {
-        var jsonLdElements =
-            document.QuerySelectorAll(
-                "script[type='application/ld+json']");
+        var jsonLdElements = document.QuerySelectorAll("script[type='application/ld+json']");
 
         foreach (var element in jsonLdElements)
         {
-            if (string.IsNullOrWhiteSpace(
-                    element.TextContent))
+            if (string.IsNullOrWhiteSpace(element.TextContent))
             {
                 continue;
             }
 
             try
             {
-                var json =
-                    WebUtility.HtmlDecode(
-                        element.TextContent);
+                var json = WebUtility.HtmlDecode(element.TextContent);
+                using var jsonDocument = JsonDocument.Parse(json);
+                var root = jsonDocument.RootElement;
 
-                using var jsonDocument =
-                    JsonDocument.Parse(json);
-
-                var root =
-                    jsonDocument.RootElement;
-
-                if (root.ValueKind !=
-                    JsonValueKind.Object)
+                if (root.ValueKind != JsonValueKind.Object)
                 {
                     continue;
                 }
 
-                if (TryGetString(
-                        root,
-                        "@type",
-                        out var type) &&
-                    string.Equals(
-                        type,
-                        "ItemList",
-                        StringComparison.OrdinalIgnoreCase))
+                if (TryGetString(root, "@type", out var type) && string.Equals(type, "ItemList", StringComparison.OrdinalIgnoreCase))
                 {
                     return element;
                 }
@@ -106,27 +71,17 @@ public sealed class TottusProductParser
         return null;
     }
 
-    private static IReadOnlyCollection<ProductOffer>
-        ParseProducts(
-            JsonElement root)
+    private static IReadOnlyCollection<Product> ParseProducts(JsonElement root)
     {
-        if (!root.TryGetProperty(
-                "itemListElement",
-                out var itemListElement) ||
-            itemListElement.ValueKind !=
-            JsonValueKind.Array)
-        {
+        if (!root.TryGetProperty("itemListElement", out var itemListElement) || itemListElement.ValueKind != JsonValueKind.Array) {
             return [];
         }
 
-        var offers =
-            new List<ProductOffer>();
-
-        foreach (var listItem
-                 in itemListElement.EnumerateArray())
+        var offers = new List<Product>();
+        
+        foreach (var listItem in itemListElement.EnumerateArray())
         {
-            var offer =
-                TryCreateProductOffer(listItem);
+            var offer = TryCreateProductOffer(listItem);
 
             if (offer is not null)
             {
@@ -135,14 +90,12 @@ public sealed class TottusProductParser
         }
 
         return offers
-            .GroupBy(
-                offer => offer.ProductUrl)
-            .Select(
-                group => group.First())
+            .GroupBy(offer => offer.ProductUrl)
+            .Select(group => group.First())
             .ToArray();
     }
 
-    private static ProductOffer? TryCreateProductOffer(JsonElement listItem)
+    private static Product? TryCreateProductOffer(JsonElement listItem)
     {
         if (!listItem.TryGetProperty("item", out var product) || product.ValueKind != JsonValueKind.Object)
         {
@@ -178,12 +131,11 @@ public sealed class TottusProductParser
             return null;
         }
 
-        return new ProductOffer(
+        var store = new Store { Code = "TOTTUS", Name = "Tottus" };
+        return new Product(
             name: name,
             price: price,
-            store: new Store(
-                code: "TOTTUS",
-                name: "Tottus"),
+            store: store,
             productUrl: productUrl,
             imageUrl: imageUrl,
             brand: brand,
@@ -192,38 +144,20 @@ public sealed class TottusProductParser
             availability: null);
     }
 
-    private static bool TryGetPrice(
-        JsonElement product,
-        out decimal price)
+    private static bool TryGetPrice(JsonElement product, out decimal price)
     {
         price = 0;
-
-        if (!product.TryGetProperty(
-                "offers",
-                out var offers) ||
-            offers.ValueKind !=
-            JsonValueKind.Array)
-        {
+        if (!product.TryGetProperty("offers", out var offers) || offers.ValueKind != JsonValueKind.Array) {
             return false;
         }
 
         foreach (var offer in offers.EnumerateArray())
         {
-            if (!TryGetString(
-                    offer,
-                    "price",
-                    out var priceText))
-            {
+            if (!TryGetString(offer, "price", out var priceText)) {
                 continue;
             }
 
-            if (decimal.TryParse(
-                    priceText,
-                    NumberStyles.Number,
-                    CultureInfo.InvariantCulture,
-                    out price) &&
-                price > 0)
-            {
+            if (decimal.TryParse(priceText, NumberStyles.Number, CultureInfo.InvariantCulture, out price) && price > 0) {
                 return true;
             }
         }
@@ -231,24 +165,13 @@ public sealed class TottusProductParser
         return false;
     }
 
-    private static bool TryGetString(
-        JsonElement element,
-        string propertyName,
-        out string value)
-    {
+    private static bool TryGetString(JsonElement element, string propertyName, out string value) {
+      
         value = string.Empty;
-
-        if (!element.TryGetProperty(
-                propertyName,
-                out var property) ||
-            property.ValueKind !=
-            JsonValueKind.String)
-        {
+        if (!element.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String) {
             return false;
         }
-
-        var result =
-            property.GetString();
+        var result = property.GetString();
 
         if (string.IsNullOrWhiteSpace(result))
         {
@@ -256,7 +179,6 @@ public sealed class TottusProductParser
         }
 
         value = result.Trim();
-
         return true;
     }
 }

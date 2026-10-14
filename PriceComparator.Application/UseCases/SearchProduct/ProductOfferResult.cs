@@ -1,4 +1,4 @@
-namespace PriceComparator.Application.UseCases.ProductOffers.SearchProductOffers;
+namespace PriceComparator.Application.UseCases.SearchProduct;
 
 public sealed record ProductOfferResult(
     string Name,

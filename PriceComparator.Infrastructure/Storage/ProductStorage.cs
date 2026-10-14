@@ -11,5 +11,5 @@ public sealed class ProductStorage
 
     public DateTime GeneratedAt { get; init; }
 
-    public IReadOnlyCollection<ProductOffer> Products { get; init; } = [];
+    public IReadOnlyCollection<Product> Products { get; init; } = [];
 }

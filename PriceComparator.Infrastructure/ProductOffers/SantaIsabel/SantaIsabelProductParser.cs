@@ -1,14 +1,16 @@
 using System.Text.Json;
 using AngleSharp.Html.Parser;
+using PriceComparator.Application.Interfaces;
 using PriceComparator.Domain.Entities;
+using PriceComparator.Domain.ValueObjects;
 
 namespace PriceComparator.Infrastructure.ProductOffers.SantaIsabel;
 
-public sealed class SantaIsabelProductParser
+public sealed class SantaIsabelProductParser: ISingletonDependency
 {
     private static readonly Uri SantaIsabelBaseUri = new("https://www.santaisabel.cl");
 
-    public async Task<IReadOnlyCollection<ProductOffer>> ParseAsync(string html, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyCollection<Product>> ParseAsync(string html, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(html))
         {
@@ -21,7 +23,6 @@ public sealed class SantaIsabelProductParser
         /*
          * Santa Isabel incluye los datos completos de la PLP
          * dentro de:
-         *
          * window.__renderData = "...";
          */
         var renderDataScript = document.Scripts.FirstOrDefault(script => script.TextContent.Contains("window.__renderData", StringComparison.Ordinal));
@@ -29,11 +30,11 @@ public sealed class SantaIsabelProductParser
         if (renderDataScript is null)
         {
             Console.WriteLine("[SANTA ISABEL] No se encontró window.__renderData.");
-
             return [];
         }
 
         var renderDataJson = ExtractRenderDataJson(renderDataScript.TextContent);
+       
         if (string.IsNullOrWhiteSpace(renderDataJson))
         {
             Console.WriteLine("[SANTA ISABEL] No se pudo extraer window.__renderData.");
@@ -57,7 +58,6 @@ public sealed class SantaIsabelProductParser
     private static string? ExtractRenderDataJson(string script)
     {
         const string marker = "window.__renderData";
-
         var markerIndex = script.IndexOf(marker, StringComparison.Ordinal);
 
         if (markerIndex < 0)
@@ -76,87 +76,59 @@ public sealed class SantaIsabelProductParser
 
         /*
          * El script termina normalmente en:
-         *
          * window.__renderData = "...";
          */
         if (value.EndsWith(';'))
         {
-            value =
-                value[..^1].Trim();
+            value = value[..^1].Trim();
         }
 
         /*
          * __renderData no contiene directamente un objeto JSON.
-         *
          * Es un STRING JavaScript que internamente contiene JSON:
-         *
          * "{\"plp\":{...}}"
-         *
          * JsonSerializer.Deserialize<string>() elimina correctamente
          * las comillas externas y los caracteres escapados.
          */
         try
         {
-            return JsonSerializer.Deserialize<string>(
-                value);
+            return JsonSerializer.Deserialize<string>(value);
         }
         catch (JsonException exception)
         {
-            Console.WriteLine(
-                "[SANTA ISABEL] No se pudo deserializar " +
-                "window.__renderData: " +
-                exception.Message);
-
+            Console.WriteLine("[SANTA ISABEL] No se pudo deserializar " + "window.__renderData: " + exception.Message);
             return null;
         }
     }
 
-    private static IReadOnlyCollection<ProductOffer> ParseProducts(JsonElement root)
+    private static IReadOnlyCollection<Product> ParseProducts(JsonElement root)
     {
         /*
          * Estructura:
-         *
          * plp
          *   -> plp_products
          *       -> products[]
          */
-        if (!root.TryGetProperty(
-                "plp",
-                out var plp) ||
-            plp.ValueKind !=
-            JsonValueKind.Object)
+        if (!root.TryGetProperty("plp", out var plp) || plp.ValueKind != JsonValueKind.Object)
         {
             return [];
         }
 
-        if (!plp.TryGetProperty(
-                "plp_products",
-                out var plpProducts) ||
-            plpProducts.ValueKind !=
-            JsonValueKind.Object)
+        if (!plp.TryGetProperty("plp_products", out var plpProducts) || plpProducts.ValueKind != JsonValueKind.Object)
         {
             return [];
         }
 
-        if (!plpProducts.TryGetProperty(
-                "products",
-                out var products) ||
-            products.ValueKind !=
-            JsonValueKind.Array)
+        if (!plpProducts.TryGetProperty("products", out var products) || products.ValueKind != JsonValueKind.Array)
         {
             return [];
         }
 
-        var offers =
-            new List<ProductOffer>();
+        var offers = new List<Product>();
 
-        foreach (
-            var product
-            in products.EnumerateArray())
+        foreach (var product in products.EnumerateArray())
         {
-            var offer =
-                TryCreateProductOffer(
-                    product);
+            var offer = TryCreateProductOffer(product);
 
             if (offer is not null)
             {
@@ -165,80 +137,47 @@ public sealed class SantaIsabelProductParser
         }
 
         return offers
-            .GroupBy(
-                offer => offer.ProductUrl)
-            .Select(
-                group => group.First())
+            .GroupBy(offer => offer.ProductUrl)
+            .Select(group => group.First())
             .ToArray();
     }
 
-    private static ProductOffer?
-        TryCreateProductOffer(
-            JsonElement product)
+    private static Product? TryCreateProductOffer(JsonElement product)
     {
-        if (!TryGetString(
-                product,
-                "productName",
-                out var name))
+        if (!TryGetString(product, "productName", out var name))
         {
             return null;
         }
 
-        TryGetString(
-            product,
-            "brand",
-            out var brand);
+        TryGetString(product, "brand", out var brand);
 
         /*
          * Santa Isabel entrega linkText.
-         *
          * Ejemplo:
-         *
          * arroz-largo-fino-1-kg-cuisine-and-co-1845786
          */
-        if (!TryGetString(
-                product,
-                "linkText",
-                out var linkText))
+        if (!TryGetString(product, "linkText", out var linkText))
         {
             return null;
         }
 
-        var productUrl =
-            new Uri(
-                SantaIsabelBaseUri,
-                $"/{linkText}/p");
-
-        var categories =
-            GetCategories(product);
+        var productUrl = new Uri(SantaIsabelBaseUri, $"/{linkText}/p");
+        var categories = GetCategories(product);
 
         /*
          * Un producto puede tener uno o más SKUs.
-         *
          * Para nuestro comparador utilizamos el primer SKU
          * que tenga seller y precio válido.
          */
-        if (!product.TryGetProperty(
-                "items",
-                out var items) ||
-            items.ValueKind !=
-            JsonValueKind.Array)
+        if (!product.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
         {
             return null;
         }
 
-        foreach (
-            var item
-            in items.EnumerateArray())
+        foreach (var item in items.EnumerateArray())
         {
-            var offer =
-                TryCreateProductOfferFromItem(
-                    item,
-                    name,
-                    brand,
-                    productUrl,
-                    categories);
-
+            var offer = TryCreateProductOfferFromItem(item, name, brand, productUrl, categories);
+            
             if (offer is not null)
             {
                 return offer;
@@ -248,7 +187,7 @@ public sealed class SantaIsabelProductParser
         return null;
     }
 
-    private static ProductOffer? TryCreateProductOfferFromItem(JsonElement item, string name, string? brand, Uri productUrl, IReadOnlyCollection<string> categories)
+    private static Product? TryCreateProductOfferFromItem(JsonElement item, string name, string? brand, Uri productUrl, IReadOnlyCollection<string> categories)
     {
         Uri? imageUrl = GetImageUrl(item);
         if (!item.TryGetProperty("sellers", out var sellers) || sellers.ValueKind != JsonValueKind.Array)
@@ -275,11 +214,11 @@ public sealed class SantaIsabelProductParser
 
             TryGetString(seller, "sellerName", out var sellerName);
             var availability = GetAvailability(commercialOffer);
-
-            return new ProductOffer(
+            var store = new Store { Code = "SANTA_ISABEL", Name = "Santa Isabel" };
+            return new Product(
                 name: name,
                 price: price,
-                store: new Store(code: "SANTA_ISABEL", name: "Santa Isabel"),
+                store: store,
                 productUrl: productUrl,
                 imageUrl: imageUrl,
                 brand: brand,
@@ -309,8 +248,7 @@ public sealed class SantaIsabelProductParser
 
             var categoryPath = categoryElement.GetString();
 
-            if (string.IsNullOrWhiteSpace(
-                    categoryPath))
+            if (string.IsNullOrWhiteSpace(categoryPath))
             {
                 continue;
             }
@@ -347,30 +285,19 @@ public sealed class SantaIsabelProductParser
         return null;
     }
 
-    private static string?
-        GetAvailability(
-            JsonElement commercialOffer)
+    private static string? GetAvailability(JsonElement commercialOffer)
     {
         /*
          * Santa Isabel no entrega schema.org availability
          * en __renderData.
-         *
          * Sí entrega AvailableQuantity.
          */
-        if (!commercialOffer.TryGetProperty(
-                "AvailableQuantity",
-                out var quantityElement) ||
-            quantityElement.ValueKind !=
-            JsonValueKind.Number ||
-            !quantityElement.TryGetInt32(
-                out var quantity))
+        if (!commercialOffer.TryGetProperty("AvailableQuantity", out var quantityElement) || quantityElement.ValueKind != JsonValueKind.Number || !quantityElement.TryGetInt32(out var quantity))
         {
             return null;
         }
 
-        return quantity > 0
-            ? "IN_STOCK"
-            : "OUT_OF_STOCK";
+        return quantity > 0 ? "IN_STOCK" : "OUT_OF_STOCK";
     }
 
     private static bool TryGetString(JsonElement element, string propertyName, out string value)
@@ -390,19 +317,16 @@ public sealed class SantaIsabelProductParser
         }
 
         value = result.Trim();
-
         return true;
     }
 
     private static bool TryGetDecimal(JsonElement element, string propertyName, out decimal value)
     {
         value = 0;
-
         if (!element.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.Number)
         {
             return false;
         }
-
         return property.TryGetDecimal(out value);
     }
 }

@@ -1,15 +1,17 @@
 using System.Globalization;
 using System.Text.Json;
 using AngleSharp.Html.Parser;
+using PriceComparator.Application.Interfaces;
 using PriceComparator.Domain.Entities;
+using PriceComparator.Domain.ValueObjects;
 
 namespace PriceComparator.Infrastructure.ProductOffers.Lider;
 
-public sealed class LiderProductParser
+public sealed class LiderProductParser : ISingletonDependency
 {
     private static readonly Uri LiderBaseUri = new("https://super.lider.cl");
 
-    public async Task<IReadOnlyCollection<ProductOffer>> ParseAsync(string html, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyCollection<Product>> ParseAsync(string html, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(html))
         {
@@ -37,9 +39,7 @@ public sealed class LiderProductParser
             }
 
             var offers = ParseOrganicProducts(searchResult);
-
             Console.WriteLine($"[LIDER][PARSER] Productos orgánicos extraídos: {offers.Count}");
-
             return offers;
         }
         catch (JsonException exception)
@@ -78,19 +78,18 @@ public sealed class LiderProductParser
                 }
             }
         }
-
         searchResult = default;
         return false;
     }
 
-    private static IReadOnlyCollection<ProductOffer> ParseOrganicProducts(JsonElement searchResult)
+    private static IReadOnlyCollection<Product> ParseOrganicProducts(JsonElement searchResult)
     {
         if (!searchResult.TryGetProperty("itemStacks", out var itemStacks) || itemStacks.ValueKind != JsonValueKind.Array)
         {
             return [];
         }
-
-        var offers = new List<ProductOffer>();
+        
+        var offers = new List<Product>();
 
         foreach (var stack in itemStacks.EnumerateArray())
         {
@@ -160,7 +159,7 @@ public sealed class LiderProductParser
         return typeProperty.ValueKind == JsonValueKind.String && string.Equals(typeProperty.GetString(), "Product", StringComparison.Ordinal);
     }
 
-    private static ProductOffer? TryCreateProductOffer(JsonElement product)
+    private static Product? TryCreateProductOffer(JsonElement product)
     {
         if (!TryGetString(product, "name", out var name))
         {
@@ -194,10 +193,8 @@ public sealed class LiderProductParser
 
         var categories = GetCategories(product);
         var availability = GetAvailability(product);
-
-        var store = new Store(code: "LIDER", name: "Lider");
-
-        return new ProductOffer(
+        var store = new Store { Code = "LIDER", Name = "Lider" };
+        return new Product(
             name: name,
             price: price,
             store: store,
@@ -231,8 +228,7 @@ public sealed class LiderProductParser
             return directImageUrl;
         }
 
-        if (product.TryGetProperty("imageInfo", out var imageInfo) &&
-            imageInfo.ValueKind == JsonValueKind.Object &&
+        if (product.TryGetProperty("imageInfo", out var imageInfo) && imageInfo.ValueKind == JsonValueKind.Object &&
             TryGetString(imageInfo, "thumbnailUrl", out var thumbnailUrl) &&
             TryCreateAbsoluteUri(thumbnailUrl, out var imageInfoUrl))
         {
@@ -248,7 +244,6 @@ public sealed class LiderProductParser
         {
             return [];
         }
-
         var categories = new List<string>();
 
         if (category.TryGetProperty("path", out var path) && path.ValueKind == JsonValueKind.Array)
@@ -266,7 +261,7 @@ public sealed class LiderProductParser
         {
             categories.AddRange(categoryPath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         }
-
+        
         return categories.Where(categoryName => !string.IsNullOrWhiteSpace(categoryName)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
@@ -279,8 +274,7 @@ public sealed class LiderProductParser
 
         if (TryGetString(product, "availabilityStatusDisplayValue", out var displayValue))
         {
-            return NormalizeAvailability(
-                displayValue);
+            return NormalizeAvailability(displayValue);
         }
 
         if (product.TryGetProperty("availabilityStatusV2", out var availabilityV2) && availabilityV2.ValueKind == JsonValueKind.Object && TryGetString(availabilityV2, "value", out var availabilityValue))
@@ -291,21 +285,14 @@ public sealed class LiderProductParser
         return null;
     }
 
-    private static string NormalizeAvailability(
-        string value)
+    private static string NormalizeAvailability(string value)
     {
-        if (string.Equals(
-                value,
-                "In stock",
-                StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(value, "In stock", StringComparison.OrdinalIgnoreCase))
         {
             return "IN_STOCK";
         }
 
-        if (string.Equals(
-                value,
-                "Out of stock",
-                StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(value, "Out of stock", StringComparison.OrdinalIgnoreCase))
         {
             return "OUT_OF_STOCK";
         }
@@ -313,100 +300,64 @@ public sealed class LiderProductParser
         return value;
     }
 
-    private static bool TryCreateAbsoluteUri(
-        string value,
-        out Uri uri)
+    private static bool TryCreateAbsoluteUri(string value, out Uri uri)
     {
-        if (Uri.TryCreate(
-                value,
-                UriKind.Absolute,
-                out var absoluteUri))
+        if (Uri.TryCreate(value, UriKind.Absolute, out var absoluteUri))
         {
             uri = absoluteUri;
-
             return true;
         }
 
-        if (Uri.TryCreate(
-                LiderBaseUri,
-                value,
-                out var relativeUri))
+        if (Uri.TryCreate(LiderBaseUri, value, out var relativeUri))
         {
             uri = relativeUri;
-
             return true;
         }
 
         uri = null!;
-
         return false;
     }
 
-    private static bool TryGetString(
-        JsonElement element,
-        string propertyName,
-        out string value)
+    private static bool TryGetString(JsonElement element, string propertyName, out string value)
     {
-        value =
-            string.Empty;
+        value = string.Empty;
+        if (!element.TryGetProperty(propertyName, out var property))
+        {
+            return false;
+        }
+        
+        if (property.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+        var result = property.GetString();
 
-        if (!element.TryGetProperty(
-                propertyName,
-                out var property))
+        if (string.IsNullOrWhiteSpace(result))
         {
             return false;
         }
 
-        if (property.ValueKind !=
-            JsonValueKind.String)
-        {
-            return false;
-        }
-
-        var result =
-            property.GetString();
-
-        if (string.IsNullOrWhiteSpace(
-                result))
-        {
-            return false;
-        }
-
-        value =
-            result.Trim();
-
+        value = result.Trim();
         return true;
     }
 
-    private static bool TryGetDecimal(
-        JsonElement element,
-        string propertyName,
-        out decimal value)
+    private static bool TryGetDecimal(JsonElement element, string propertyName, out decimal value)
     {
         value = 0;
 
-        if (!element.TryGetProperty(
-                propertyName,
-                out var property))
+        if (!element.TryGetProperty(propertyName, out var property))
         {
             return false;
         }
 
-        if (property.ValueKind ==
-            JsonValueKind.Number)
+        if (property.ValueKind == JsonValueKind.Number)
         {
-            return property.TryGetDecimal(
-                out value);
+            return property.TryGetDecimal(out value);
         }
 
-        if (property.ValueKind ==
-            JsonValueKind.String)
+        if (property.ValueKind == JsonValueKind.String)
         {
-            return decimal.TryParse(
-                property.GetString(),
-                NumberStyles.Number,
-                CultureInfo.InvariantCulture,
-                out value);
+            return decimal.TryParse(property.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out value);
         }
 
         return false;

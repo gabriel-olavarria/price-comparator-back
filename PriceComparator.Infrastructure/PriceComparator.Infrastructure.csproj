@@ -17,14 +17,20 @@
       <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.10" />
       <PackageReference Include="Microsoft.Extensions.Http" Version="11.0.0-preview.6.26359.118" />
       <PackageReference Include="Microsoft.Playwright" Version="1.61.0" />
+      <PackageReference Include="Scrutor" Version="7.0.0" />
     </ItemGroup>
     
     <ItemGroup>
         <Content Include="Snapshots/Data/**/*">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
+        
     </ItemGroup>
-    
+    <ItemGroup>
+        <None Update="Data/product-concepts.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
     <ItemGroup>
       <Folder Include="Storage\Data\Jumbo\" />
       <Folder Include="Storage\Data\Lider\" />
