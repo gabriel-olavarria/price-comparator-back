@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+using PriceComparator.Domain.Services;
 using PriceComparator.Domain.ValueObjects;
 
 namespace PriceComparator.Domain.Entities;
@@ -6,19 +8,21 @@ public sealed class Product
 {
     public string Name { get; }
     public decimal Price { get; }
-    public Store Store { get; }
+    public Store Store { get; set; }
     public Uri ProductUrl { get; }
     public Uri? ImageUrl { get; }
     public string? Brand { get; }
     public string? SellerName { get; }
-    public IReadOnlyCollection<string> Categories { get; }
+    [JsonPropertyName("categories")]
+    public IReadOnlyCollection<string> CategoriesStore { get; }
     public string? Availability { get; }
     public string? CanonicalKey { get; set; }
     public double Score { get; set; } = 0;
-    
+    public Normalized Normalized { get; set; }
     public Clasification? Clasification { get; set; }
 
-    public Product(string name, decimal price, Store store, Uri productUrl, Uri? imageUrl = null, string? brand = null, string? sellerName = null, IReadOnlyCollection<string>? categories = null, string? availability = null) {
+    public Product(string name, decimal price, Store store, Uri productUrl, Uri? imageUrl = null, string? brand = null, string? sellerName = null, IReadOnlyCollection<string>? categoriesStore  = null, string? availability = null) {
+       
         if (string.IsNullOrWhiteSpace(name))
         {
             throw new ArgumentException("El nombre del producto es obligatorio.", nameof(name));
@@ -34,19 +38,9 @@ public sealed class Product
         Store = store ?? throw new ArgumentNullException(nameof(store));
         ProductUrl = productUrl ?? throw new ArgumentNullException(nameof(productUrl));
         ImageUrl = imageUrl;
-        Brand = NormalizeOptionalText(brand);
-        SellerName = NormalizeOptionalText(sellerName);
-        Availability = NormalizeOptionalText(availability);
-        Categories = categories?
-            .Where(category => !string.IsNullOrWhiteSpace(category))
-            .Select(category => category.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray()
-            ?? [];
-    }
-
-    private static string? NormalizeOptionalText(string? value)
-    {
-        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        Brand = NormalizerService.NormalizeOptionalText(brand);
+        SellerName = NormalizerService.NormalizeOptionalText(sellerName);
+        Availability = NormalizerService.NormalizeOptionalText(availability);
+        CategoriesStore =  NormalizerService.NormalizeCategories(categoriesStore);
     }
 }

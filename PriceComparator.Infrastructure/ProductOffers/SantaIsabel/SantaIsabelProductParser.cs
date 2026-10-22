@@ -1,6 +1,6 @@
 using System.Text.Json;
 using AngleSharp.Html.Parser;
-using PriceComparator.Application.Interfaces;
+using PriceComparator.Application.Interfaces.DependencyInjection;
 using PriceComparator.Domain.Entities;
 using PriceComparator.Domain.ValueObjects;
 
@@ -223,7 +223,7 @@ public sealed class SantaIsabelProductParser: ISingletonDependency
                 imageUrl: imageUrl,
                 brand: brand,
                 sellerName: string.IsNullOrWhiteSpace(sellerName) ? "Santa Isabel" : sellerName,
-                categories: categories,
+                categoriesStore: categories,
                 availability: availability);
         }
 

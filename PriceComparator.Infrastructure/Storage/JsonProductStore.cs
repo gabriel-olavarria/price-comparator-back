@@ -1,23 +1,28 @@
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using PriceComparator.Domain.Entities;
-using PriceComparator.Application.Interfaces;
+using PriceComparator.Application.Interfaces.DependencyInjection;
 
 namespace PriceComparator.Infrastructure.Storage;
 
 public sealed class JsonProductStore : ISingletonDependency
 {
     private readonly string _basePath;
+    private readonly ProductStorageOptions _options;
 
-    private static readonly JsonSerializerOptions JsonOptions =
-        new()
-        {
-            WriteIndented = true,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            PropertyNameCaseInsensitive = true
-        };
-
-    public JsonProductStore()
+    private static readonly JsonSerializerOptions JsonOptions = new()
     {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
+
+    public JsonProductStore(IOptions<ProductStorageOptions> options)
+    {
+        _options = options.Value;
+        Console.WriteLine($"SaveRaw: {_options.SaveRaw}");
+        Console.WriteLine($"SaveProcessed: {_options.SaveProcessed}");
+
         _basePath = Path.Combine(
             Directory.GetCurrentDirectory(),
             "..",
@@ -26,60 +31,56 @@ public sealed class JsonProductStore : ISingletonDependency
             "Data");
     }
 
-    public async Task<IReadOnlyCollection<Product>?> GetAsync(string storeCode, string query, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyCollection<Product>?> GetAsync(
+        string storeCode,
+        string query,
+        CancellationToken cancellationToken = default)
     {
-        var filePath = GetFilePath(storeCode, query);
+        var filePath = GetFilePath(storeCode, query, "Processed");
 
-        Console.WriteLine($"[STORAGE] Buscando JSON en: {filePath}");
-
+        // Compatibilidad con archivos anteriores
         if (!File.Exists(filePath))
         {
-            Console.WriteLine($"[STORAGE] No existe JSON para {storeCode} - {query}.");
-            return null;
+            filePath = GetLegacyFilePath(storeCode, query);
         }
+
+        if (!File.Exists(filePath))
+            return null;
 
         try
         {
             await using var stream = File.OpenRead(filePath);
-            var data = await JsonSerializer.DeserializeAsync<ProductStorage>(stream, JsonOptions, cancellationToken);
+
+            var data = await JsonSerializer.DeserializeAsync<ProductStorage>(
+                stream,
+                JsonOptions,
+                cancellationToken);
 
             if (data is null)
-            {
-                Console.WriteLine($"[STORAGE] El JSON de {storeCode} - {query} no contiene datos válidos.");
                 return null;
-            }
 
             if (data.GeneratedAt.Date != DateTime.UtcNow.Date)
-            {
-                Console.WriteLine($"[STORAGE] JSON expirado para {storeCode} - {query}. " + $"Generado: {data.GeneratedAt:O}");
                 return null;
-            }
 
             if (data.Products.Count == 0)
-            {
-                Console.WriteLine($"[STORAGE] JSON sin productos para {storeCode} - {query}. " + "Se consultará nuevamente.");
                 return null;
-            }
 
-            Console.WriteLine($"[STORAGE] JSON encontrado para {storeCode} - {query}: " + $"{data.Products.Count} productos.");
             return data.Products;
         }
-        catch (JsonException exception)
+        catch (JsonException)
         {
-            Console.WriteLine($"[STORAGE] Error leyendo JSON de {storeCode} - {query}: " + $"{exception.Message}");
             return null;
         }
     }
 
-    public async Task SaveAsync(string storeCode, string query, IReadOnlyCollection<Product> products, CancellationToken cancellationToken = default)
+    public async Task SaveAsync(
+        string storeCode,
+        string query,
+        IReadOnlyCollection<Product> products,
+        CancellationToken cancellationToken = default)
     {
-        var filePath = GetFilePath(storeCode, query);
-        var directoryPath = Path.GetDirectoryName(filePath);
-
-        if (!string.IsNullOrWhiteSpace(directoryPath))
-        {
-            Directory.CreateDirectory(directoryPath);
-        }
+        if (!_options.SaveProcessed)
+            return;
 
         var data = new ProductStorage
         {
@@ -89,21 +90,70 @@ public sealed class JsonProductStore : ISingletonDependency
             Products = products
         };
 
-        Console.WriteLine($"[STORAGE] Guardando JSON en: {filePath}");
+        var filePath = GetFilePath(storeCode, query, "Processed");
+
+        Directory.CreateDirectory(
+            Path.GetDirectoryName(filePath)!);
+
         await using var stream = File.Create(filePath);
-        await JsonSerializer.SerializeAsync(stream, data, JsonOptions, cancellationToken);
-        Console.WriteLine($"[STORAGE] JSON guardado correctamente: " + $"{products.Count} productos.");
+
+        await JsonSerializer.SerializeAsync(
+            stream,
+            data,
+            JsonOptions,
+            cancellationToken);
     }
 
-    private string GetFilePath(string storeCode, string query)
+    public async Task SaveRawAsync(
+        string storeCode,
+        string query,
+        string rawJson,
+        CancellationToken cancellationToken = default)
     {
-        var storePath = Path.Combine(_basePath, storeCode);
-        var fileName = $"{Normalize(query)}.json";
-        return Path.Combine(storePath, fileName);
+        if (!_options.SaveRaw)
+            return;
+
+        var filePath = GetFilePath(storeCode, query, "Raw");
+
+        Directory.CreateDirectory(
+            Path.GetDirectoryName(filePath)!);
+
+        await File.WriteAllTextAsync(
+            filePath,
+            rawJson,
+            cancellationToken);
+    }
+
+    private string GetFilePath(
+        string storeCode,
+        string query,
+        string type)
+    {
+        return Path.Combine(
+            _basePath,
+            type,
+            storeCode,
+            $"{Normalize(query)}.json");
+    }
+
+    private string GetLegacyFilePath(
+        string storeCode,
+        string query)
+    {
+        return Path.Combine(
+            _basePath,
+            storeCode,
+            $"{Normalize(query)}.json");
     }
 
     private static string Normalize(string value)
     {
-        return string.Join("-", value.Trim().ToLowerInvariant().Split([' ', '/', '\\'], StringSplitOptions.RemoveEmptyEntries));
+        return string.Join(
+            "-",
+            value.Trim()
+                .ToLowerInvariant()
+                .Split(
+                    [' ', '/', '\\'],
+                    StringSplitOptions.RemoveEmptyEntries));
     }
 }

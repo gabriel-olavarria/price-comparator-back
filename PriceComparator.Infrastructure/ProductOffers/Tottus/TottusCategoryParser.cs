@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using PriceComparator.Application.Interfaces;
+using PriceComparator.Application.Interfaces.DependencyInjection;
 
 namespace PriceComparator.Infrastructure.ProductOffers.Tottus;
 

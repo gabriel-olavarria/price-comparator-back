@@ -1,4 +1,6 @@
 using PriceComparator.Application.Interfaces;
+using PriceComparator.Application.Interfaces.DependencyInjection;
+using PriceComparator.Application.Interfaces.Services;
 using PriceComparator.Domain.Entities;
 using PriceComparator.Infrastructure.Storage;
 

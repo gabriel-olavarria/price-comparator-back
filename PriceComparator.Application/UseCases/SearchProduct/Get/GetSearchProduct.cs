@@ -1,0 +1,73 @@
+
+using PriceComparator.Application.Interfaces.DependencyInjection;
+using PriceComparator.Application.Interfaces.Repositories;
+using PriceComparator.Application.Interfaces.Services;
+using PriceComparator.Domain.Entities;
+
+
+namespace PriceComparator.Application.UseCases.SearchProduct.Get;
+
+public sealed class GetSearchProduct(
+    IEnumerable<IProductOfferSearcher> searchers,
+    IConceptRepository conceptRepository,
+    IRankedService rankedService,
+    IProductService productService,
+    ICanonicalService canonicalService)
+    : IScopedDependency
+{
+    private readonly IReadOnlyCollection<IProductOfferSearcher> _searchers = searchers.ToArray();
+
+    public async Task<ProductResponse> ExecuteAsync(ProductRequest request, CancellationToken cancellationToken = default)
+    {
+        var query = request.Query?.Trim();
+        var concepts = await conceptRepository.GetAllAsync(cancellationToken);
+        var productsByStore = new Dictionary<string, IReadOnlyCollection<Product>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var searcher in _searchers)
+        {
+            try
+            {
+                
+                Console.WriteLine($"{searcher.GetType().FullName} | StoreCode={searcher.StoreCode}");
+                
+                 // 1. Obtener ofertas desde el supermercado.
+                var offers = await searcher.SearchAsync(query!, cancellationToken);
+                
+                // 2. Eliminar ofertas duplicadas.
+                var uniqueOffers = productService.RemoveDuplicates(offers);
+
+                var products = productService.PrepareProducts(query!, uniqueOffers, concepts);
+                
+                // 3. Calcular la relevancia de los productos.
+                products = rankedService.Rank(query!, products);
+                 
+                // 4. Guardar los productos por tienda.
+                productsByStore[searcher.StoreCode] = products;
+            }
+            catch (OperationCanceledException)when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine($"Error ejecutando {searcher.StoreCode}: " + $"{exception.GetType().Name} - " + $"{exception.Message}");
+                productsByStore[searcher.StoreCode] = [];
+            }
+        }
+
+        var totalResults = productsByStore.Values.Sum(products => products.Count);
+       
+        var productsCanonicals = productsByStore
+            .SelectMany(store => store.Value)
+            .ToArray();
+
+        var canonicalGroups = canonicalService.GroupByCanonicalKey(productsCanonicals);
+        var cheapestByStoreGroups = canonicalService.GetCheapestByStore(canonicalGroups);
+        
+        return new ProductResponse(
+            Query: query!,
+            TotalResults: totalResults,
+            Stores: productsByStore);
+    }
+    
+}

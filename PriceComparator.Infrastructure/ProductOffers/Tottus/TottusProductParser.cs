@@ -3,7 +3,7 @@ using System.Net;
 using System.Text.Json;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
-using PriceComparator.Application.Interfaces;
+using PriceComparator.Application.Interfaces.DependencyInjection;
 using PriceComparator.Domain.Entities;
 using PriceComparator.Domain.ValueObjects;
 
@@ -140,7 +140,7 @@ public sealed class TottusProductParser: ISingletonDependency
             imageUrl: imageUrl,
             brand: brand,
             sellerName: "Tottus",
-            categories: [],
+            categoriesStore: [],
             availability: null);
     }
 

@@ -1,7 +1,7 @@
 using System.Globalization;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
-using PriceComparator.Application.Interfaces;
+using PriceComparator.Application.Interfaces.DependencyInjection;
 using PriceComparator.Domain.Entities;
 using PriceComparator.Domain.ValueObjects;
 
@@ -81,7 +81,7 @@ public sealed class UnimarcProductParser : ISingletonDependency
             imageUrl: imageUrl,
             brand: brand,
             sellerName: "Unimarc",
-            categories: [],
+            categoriesStore: [],
             availability: null);
     }
 

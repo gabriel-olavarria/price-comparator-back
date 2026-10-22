@@ -1,5 +1,6 @@
 using System.Text.Json;
-using PriceComparator.Application.Interfaces;
+using PriceComparator.Application.Interfaces.DependencyInjection;
+using PriceComparator.Application.Interfaces.Repositories;
 using PriceComparator.Domain.Entities;
 
 namespace PriceComparator.Infrastructure.Repositories;

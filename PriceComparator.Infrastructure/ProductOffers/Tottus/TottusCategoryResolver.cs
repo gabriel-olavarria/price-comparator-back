@@ -1,4 +1,4 @@
-using PriceComparator.Application.Interfaces;
+using PriceComparator.Application.Interfaces.DependencyInjection;
 
 namespace PriceComparator.Infrastructure.ProductOffers.Tottus;
 

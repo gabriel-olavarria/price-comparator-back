@@ -1,18 +1,18 @@
 using Microsoft.AspNetCore.Mvc;
-using PriceComparator.Application.UseCases;
-using PriceComparator.Application.UseCases.SearchProduct;
-using PriceComparator.Domain.Common;
+using Microsoft.AspNetCore.RateLimiting;
+using PriceComparator.Api.Configurations;
+using PriceComparator.Application.UseCases.SearchProduct.Get;
 
 namespace PriceComparator.Api.Controllers;
 
 [ApiController]
 [Route("api/product")]
-public class ProductController(ProductUseCases product)
+public class ProductController(ProductUseCases product) : ControllerBase
 {
+    [EnableRateLimiting(RateLimitingConfiguration.ProductSearch)]
     [HttpGet("search")]
-    public async Task<IActionResult> SearchAsync([FromQuery] string query, [FromQuery] string[]? categories, CancellationToken cancellationToken)
+    public Task<ProductResponse> SearchAsync([FromQuery] ProductRequest request, CancellationToken cancellationToken)
     {
-        var request = new ProductRequest(Query: query, Categories: categories ?? []);
-        return await product.GetSearchProduct.ExecuteAsync(request, cancellationToken).ToValueOrProblemDetails();;
+        return product.GetSearchProduct.ExecuteAsync(request, cancellationToken);
     }
 }

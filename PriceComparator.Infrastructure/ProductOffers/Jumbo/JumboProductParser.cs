@@ -2,7 +2,7 @@ using System.Net;
 using System.Text.Json;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
-using PriceComparator.Application.Interfaces;
+using PriceComparator.Application.Interfaces.DependencyInjection;
 using PriceComparator.Domain.Entities;
 using PriceComparator.Domain.ValueObjects;
 
@@ -228,7 +228,7 @@ public sealed class JumboProductParser : ISingletonDependency
         if (categoriesByProductUrl.TryGetValue(normalizedProductPath, out var productCategories)) {
             categories = productCategories;
         }
-        var store = new Store { Code = "UNIMARC", Name = "Unimarc" };
+        var store = new Store { Code = "JUMBO", Name = "Jumbo" };
         return new Product(
             name: name,
             price: price,
@@ -237,7 +237,7 @@ public sealed class JumboProductParser : ISingletonDependency
             imageUrl: imageUrl,
             brand: brand,
             sellerName: "Jumbo",
-            categories: categories,
+            categoriesStore: categories,
             availability: availability);
     }
 

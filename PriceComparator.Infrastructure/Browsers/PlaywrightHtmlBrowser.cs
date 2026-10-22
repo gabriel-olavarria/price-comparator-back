@@ -1,5 +1,6 @@
+
 using Microsoft.Playwright;
-using PriceComparator.Application.Interfaces;
+using PriceComparator.Application.Interfaces.DependencyInjection;
 
 namespace PriceComparator.Infrastructure.Browsers;
 
@@ -223,6 +224,143 @@ public sealed class PlaywrightHtmlBrowser : IAsyncDisposable, ISingletonDependen
             Console.WriteLine("[PLAYWRIGHT] Development - página liberada después del error/bloqueo.");
             throw;
         }
+    }
+
+    // ============================================================
+    // JSON RESPONSE CAPTURE (UNIMARC / OTHER STORES)
+    // ============================================================
+
+    public async Task<string> GetJsonResponseAsync(
+        string url,
+        string responseUrl,
+        CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            await EnsurePlaywrightAsync();
+
+            if (IsProduction())
+            {
+                await using var browser = await _playwright!.Chromium.LaunchAsync(
+                    new BrowserTypeLaunchOptions
+                    {
+                        Headless = true,
+                        Args =
+                        [
+                            "--no-sandbox",
+                            "--disable-dev-shm-usage",
+                            "--disable-gpu",
+                            "--disable-extensions",
+                            "--disable-background-networking"
+                        ]
+                    });
+
+                await using var context = await browser.NewContextAsync(
+                    new BrowserNewContextOptions
+                    {
+                        ViewportSize = new ViewportSize { Width = 1366, Height = 768 },
+                        UserAgent =
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                            "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                            "Chrome/122.0.0.0 Safari/537.36"
+                    });
+
+                var page = await context.NewPageAsync();
+                try
+                {
+                    return await CaptureJsonAsync(page, url, responseUrl, cancellationToken);
+                }
+                finally
+                {
+                    if (!page.IsClosed)
+                    {
+                        await page.CloseAsync();
+                    }
+                }
+            }
+
+            await EnsureDevelopmentContextAsync();
+            var developmentPage = await GetOrCreateDevelopmentPageAsync();
+
+            try
+            {
+                return await CaptureJsonAsync(
+                    developmentPage, url, responseUrl, cancellationToken);
+            }
+            catch
+            {
+                if (!developmentPage.IsClosed)
+                {
+                    try
+                    {
+                        await developmentPage.CloseAsync();
+                    }
+                    catch (PlaywrightException exception)
+                    {
+                        Console.WriteLine($"[PLAYWRIGHT] Error al cerrar página: {exception.Message}");
+                    }
+                }
+
+                if (ReferenceEquals(_developmentPage, developmentPage))
+                {
+                    _developmentPage = null;
+                }
+
+                throw;
+            }
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    private static async Task<string> CaptureJsonAsync(
+        IPage page,
+        string url,
+        string responseUrl,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Console.WriteLine($"[PLAYWRIGHT] Capturando JSON: {url}");
+
+        // RunAndWaitForResponseAsync registra la escucha antes de ejecutar la navegación.
+        var response = await page.RunAndWaitForResponseAsync(
+            async () =>
+            {
+                await page.GotoAsync(url, new PageGotoOptions
+                {
+                    WaitUntil = WaitUntilState.DOMContentLoaded,
+                    Timeout = 60000
+                });
+            },
+            candidate =>
+                candidate.Url.StartsWith(responseUrl, StringComparison.OrdinalIgnoreCase)
+                && candidate.Request.Method == "POST",
+            new PageRunAndWaitForResponseOptions
+            {
+                Timeout = 30000
+            });
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (await IsBlockedPageAsync(page))
+        {
+            throw new InvalidOperationException(
+                $"El sitio bloqueó la navegación de Playwright. URL: {page.Url}");
+        }
+
+        Console.WriteLine($"[PLAYWRIGHT] Respuesta JSON HTTP {response.Status}");
+        if (!response.Ok)
+        {
+            throw new HttpRequestException(
+                $"La solicitud de productos respondió HTTP {response.Status}");
+        }
+
+        var json = await response.TextAsync();
+        Console.WriteLine($"[PLAYWRIGHT] JSON capturado: {json.Length} caracteres");
+        return json;
     }
 
     // ============================================================
