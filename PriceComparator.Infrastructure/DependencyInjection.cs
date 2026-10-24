@@ -1,18 +1,22 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using PriceComparator.Application.Interfaces.DependencyInjection;
+using PriceComparator.Application.Interfaces.Services;
 using PriceComparator.Infrastructure.ProductOffers.Jumbo;
 using PriceComparator.Infrastructure.ProductOffers.SantaIsabel;
 using PriceComparator.Infrastructure.ProductOffers.Tottus;
-using PriceComparator.Infrastructure.ProductOffers.Unimarc; 
+using PriceComparator.Infrastructure.ProductOffers.Unimarc;
+using PriceComparator.Infrastructure.Security;
 
 namespace PriceComparator.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services)
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         RegisterDependencies(services);
         RegisterHttpClients(services);
+        RegisterTurnstile(services, configuration);
 
         return services;
     }
@@ -56,29 +60,29 @@ public static class DependencyInjection
             { 
                 ConfigureHttpClient(client, "https://www.tottus.cl");
             });
-
-        // NUEVO: UNIMARC API
-        services.AddHttpClient<UnimarcApiClient>(
-            client =>
-            {
-                ConfigureHttpClient(client, "https://bff-unimarc-ecommerce.unimarc.cl/");
-                client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
-                client.Timeout = TimeSpan.FromSeconds(30);
-            });
+        
+        
     }
 
     private static void ConfigureHttpClient(HttpClient client, string baseAddress)
     {
         client.BaseAddress = new Uri(baseAddress);
-
         client.DefaultRequestHeaders.UserAgent.ParseAdd(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
             "AppleWebKit/537.36 (KHTML, like Gecko) " +
             "Chrome/150.0.0.0 Safari/537.36");
-
         client.DefaultRequestHeaders.AcceptLanguage.ParseAdd(
             "es-CL,es;q=0.9");
-
         client.Timeout = TimeSpan.FromSeconds(20);
+    }
+    
+    private static void RegisterTurnstile(IServiceCollection services, IConfiguration configuration)
+    {
+        services.Configure<TurnstileOptions>(configuration.GetSection(TurnstileOptions.SectionName));
+        services.AddHttpClient<ITurnstileVerificationService, TurnstileVerificationService>(client =>
+        {
+            client.BaseAddress = new Uri("https://challenges.cloudflare.com/");
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
     }
 }

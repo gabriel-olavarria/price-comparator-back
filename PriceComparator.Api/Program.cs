@@ -22,7 +22,7 @@ builder.Services.AddOpenApi();
 // ======================================================
 
 builder.Services.AddApplication();
-builder.Services.AddInfrastructure();
+builder.Services.AddInfrastructure(builder.Configuration);
 
 // ======================================================
 // CONFIGURACIONES HTTP
@@ -34,7 +34,6 @@ builder.Services.AddApiRateLimiting();
 builder.Host.UseDefaultServiceProvider((context, options) =>
 {
     var isDevelopment = context.HostingEnvironment.IsDevelopment();
-
     options.ValidateScopes = isDevelopment;
     options.ValidateOnBuild = isDevelopment;
 });
@@ -43,12 +42,14 @@ builder.Host.UseDefaultServiceProvider((context, options) =>
 // ======================================================
 
 var app = builder.Build();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     var logger = app.Services.GetRequiredService<ILogger<Program>>();
     DependencyDiagnostics.Validate(app.Services, builder.Services, logger);
 }
+app.UseApiSecurityHeaders();
 app.UseExceptionHandler();
 app.UseRouting();
 app.UseCors(CorsConfiguration.Frontend);

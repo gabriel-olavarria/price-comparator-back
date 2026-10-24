@@ -12,14 +12,13 @@ public class ProductService(
     ) 
     : IProductService, ISingletonDependency
 {
-    public IReadOnlyCollection<Product> PrepareProducts(string query, IEnumerable<Product> products, IReadOnlyCollection<Concept> concepts)
+    public IReadOnlyCollection<Product> PrepareProducts(string query, string normalizedQuery, IEnumerable<Product> products, IReadOnlyCollection<Concept> concepts)
     {
-        return [.. products.Select(product => Prepare(query, product, concepts))];
+        return [.. products.Select(product => Prepare(query, normalizedQuery, product, concepts))];
     }
 
-    private Product Prepare(string query, Product product, IReadOnlyCollection<Concept> concepts)
+    private Product Prepare(string query, string normalizedQuery, Product product, IReadOnlyCollection<Concept> concepts)
     {
-        var normalizedQuery = NormalizerService.Normalize(query);
         var normalizedName = NormalizerService.Normalize(product.Name);
         var normalizedBrand = NormalizerService.Normalize(product.Brand);
         product.Normalized = new Normalized
@@ -44,7 +43,7 @@ public class ProductService(
     
     private Product DetectClasification(Product product, Concept queryConcept)
     {
-        var measurement = MeasurementService.Extract(product.Normalized.Name);
+        var measurement = MeasurementService.Extract(product.Normalized!.Name);
         var subtype = SubTypeService.Extract(product.Normalized.Name, queryConcept.Subtypes);
 
         product.Clasification = new Clasification

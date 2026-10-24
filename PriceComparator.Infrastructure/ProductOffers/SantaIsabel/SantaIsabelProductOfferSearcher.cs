@@ -21,30 +21,50 @@ public sealed class SantaIsabelProductOfferSearcher : IProductOfferSearcher, ITr
 
     public async Task<IReadOnlyCollection<Product>> SearchAsync(string query, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            return [];
-        }
 
         var normalizedQuery = query.Trim();
         var storedOffers = await _productStore.GetAsync(StoreCode, normalizedQuery, cancellationToken);
         
-        if (storedOffers is not null)
+        if (storedOffers is null)
         {
-            Console.WriteLine($"[SANTA ISABEL] Usando productos almacenados: {storedOffers.Count}");
-            return storedOffers;
+            Console.WriteLine("[SANTA ISABEL] No hay datos almacenados vigentes. Consultando Santa Isabel.");
+            return [];
         }
 
-        Console.WriteLine("[SANTA ISABEL] No hay datos almacenados vigentes. Consultando Santa Isabel.");
         var html = await SearchLiveAsync(normalizedQuery, cancellationToken);
+        
+        //Almacenar entrada de datos
+        await SaveJson(html, normalizedQuery, cancellationToken);
+        
         var offers = await _parser.ParseAsync(html, cancellationToken);
-        await _productStore.SaveAsync(StoreCode, normalizedQuery, offers, cancellationToken);
-        Console.WriteLine($"[SANTA ISABEL] {offers.Count} productos guardados en JSON.");
         Console.WriteLine($"[SANTA ISABEL] Productos encontrados: {offers.Count}");
        
         return offers;
     }
 
+    public async Task SaveProducts(IReadOnlyCollection<Product> products, string query, CancellationToken cancellationToken = default)
+    {
+        await _productStore.SaveAsync(StoreCode, query, products, cancellationToken);
+        Console.WriteLine($"[SANTA ISABEL] {products.Count} productos guardados en JSON.");
+     
+    }
+    
+    public Task<IReadOnlyCollection<Product>?> GetProcessedProductsAsync(string query, CancellationToken cancellationToken = default)
+    {
+        return _productStore.GetAsync(StoreCode, query, cancellationToken);
+    }
+
+    private async Task SaveJson(string html, string normalizedQuery, CancellationToken cancellationToken)
+    {
+        var rawJson = await _parser.ExtractRawJsonAsync(html, cancellationToken);
+
+        if (rawJson != "[]")
+        {
+            await _productStore.SaveRawAsync(StoreCode, normalizedQuery, rawJson, cancellationToken);
+        }
+    }
+
+    
     private async Task<string> SearchLiveAsync(string query, CancellationToken cancellationToken)
     {
         var encodedQuery = Uri.EscapeDataString(query);

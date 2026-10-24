@@ -15,9 +15,15 @@ public sealed class ApiExceptionHandler(
     {
         ProblemDetails problem = exception switch
         {
-            ValidationException validationException =>
-                CreateValidationProblem(validationException),
+            ValidationException validationException => CreateValidationProblem(validationException),
 
+            ArgumentException argumentException => new ProblemDetails
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "Solicitud inválida",
+                Detail = argumentException.Message
+            },
+            
             KeyNotFoundException => new ProblemDetails
             {
                 Status = StatusCodes.Status404NotFound,
@@ -27,9 +33,7 @@ public sealed class ApiExceptionHandler(
 
             _ => new ProblemDetails
             {
-                Status = StatusCodes.Status500InternalServerError,
-                Title = "Error interno del servidor",
-                Detail = "No se pudo procesar la solicitud."
+                Status = StatusCodes.Status500InternalServerError
             }
         };
 

@@ -25,8 +25,11 @@ public sealed class ValidationFilter : IAsyncActionFilter
 
             foreach (var validator in validators)
             {
-                var validationContext =
-                    new ValidationContext<object>(argument);
+                var validationContextType = typeof(ValidationContext<>)
+                    .MakeGenericType(argument.GetType());
+
+                var validationContext = (IValidationContext)
+                    Activator.CreateInstance(validationContextType, argument)!;
 
                 var result = await validator.ValidateAsync(
                     validationContext,

@@ -29,7 +29,7 @@ public sealed class RankedService : IRankedService, ITransientDependency
         double score = 0;
 
         // 1. NOMBRE EXACTO
-        var exactName = product.Normalized.Name.Equals(product.Normalized.Query, StringComparison.Ordinal);
+        var exactName = product.Normalized!.Name.Equals(product.Normalized.Query, StringComparison.Ordinal);
         if (exactName)
         {
             score += 1000;

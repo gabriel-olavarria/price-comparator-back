@@ -32,11 +32,11 @@
         </None>
     </ItemGroup>
     <ItemGroup>
-      <Folder Include="Storage\Data\Jumbo\" />
-      <Folder Include="Storage\Data\Lider\" />
-      <Folder Include="Storage\Data\santaisabel\" />
-      <Folder Include="Storage\Data\tottus\" />
-      <Folder Include="Storage\Data\Unimarc\" />
+      <Folder Include="Storage\Data\Processed\Jumbo\" />
+      <Folder Include="Storage\Data\Processed\Lider\" />
+      <Folder Include="Storage\Data\Processed\Tottus\" />
+      <Folder Include="Storage\Data\Processed\Unimarc\" />
+      <Folder Include="Storage\Data\Raw\Unimarc\" />
     </ItemGroup>
 
 </Project>

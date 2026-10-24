@@ -1,5 +1,7 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
 using PriceComparator.Application.Interfaces.DependencyInjection;
@@ -12,7 +14,8 @@ public sealed class JumboProductParser : ISingletonDependency
 {
     private static readonly Uri JumboBaseUri = new("https://www.jumbo.cl");
 
-    public async Task<IReadOnlyCollection<Product>> ParseAsync(string html, CancellationToken cancellationToken = default) {
+    public async Task<IReadOnlyCollection<Product>> ParseAsync(string html, CancellationToken cancellationToken = default)
+    {
         if (string.IsNullOrWhiteSpace(html))
         {
             return [];
@@ -20,11 +23,7 @@ public sealed class JumboProductParser : ISingletonDependency
 
         var parser = new HtmlParser();
         var document = await parser.ParseDocumentAsync(html, cancellationToken);
-
-        /*
-         * Las categorías vienen en los atributos
-         * data-gtm-product-click de las tarjetas.
-         */
+        
         var categoriesByProductUrl = GetCategoriesByProductUrl(document);
 
         Console.WriteLine($"Productos con categorías en Jumbo: " + $"{categoriesByProductUrl.Count}");
@@ -43,7 +42,6 @@ public sealed class JumboProductParser : ISingletonDependency
 
         using var jsonDocument = JsonDocument.Parse(jsonLdElement.TextContent);
         var offers = ParseProducts(jsonDocument.RootElement, categoriesByProductUrl);
-
         Console.WriteLine($"Productos extraídos desde Jumbo: {offers.Count}");
 
         return offers;
@@ -84,9 +82,9 @@ public sealed class JumboProductParser : ISingletonDependency
                 }
 
                 var categories = categoryPath
-                        .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                        .Where(category => !string.IsNullOrWhiteSpace(category))
-                        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                    .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Where(category => !string.IsNullOrWhiteSpace(category))
+                    .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
                 if (categories.Length == 0)
                 {
@@ -94,7 +92,6 @@ public sealed class JumboProductParser : ISingletonDependency
                 }
 
                 var normalizedPath = NormalizeProductPath(productUrl);
-
                 result[normalizedPath] = categories;
             }
             catch (JsonException exception)
@@ -121,7 +118,7 @@ public sealed class JumboProductParser : ISingletonDependency
             {
                 using var jsonDocument = JsonDocument.Parse(element.TextContent);
                 var root = jsonDocument.RootElement;
-                
+
                 if (root.ValueKind != JsonValueKind.Object)
                 {
                     continue;
@@ -150,7 +147,6 @@ public sealed class JumboProductParser : ISingletonDependency
         {
             return [];
         }
-
         var offers = new List<Product>();
 
         foreach (var listItem in itemListElement.EnumerateArray())
@@ -169,18 +165,20 @@ public sealed class JumboProductParser : ISingletonDependency
             .ToArray();
     }
 
-    private static Product? TryCreateProductOffer(JsonElement listItem, IReadOnlyDictionary<string, IReadOnlyCollection<string>> categoriesByProductUrl) {
-        
+    private static Product? TryCreateProductOffer(JsonElement listItem, IReadOnlyDictionary<string, IReadOnlyCollection<string>> categoriesByProductUrl)
+    {
         if (!listItem.TryGetProperty("item", out var product) || product.ValueKind != JsonValueKind.Object)
         {
             return null;
         }
 
-        if (!TryGetString(product, "name", out var name)) {
+        if (!TryGetString(product, "name", out var name))
+        {
             return null;
         }
 
-        if (!TryGetString(product, "url", out var productUrlText)) {
+        if (!TryGetString(product, "url", out var productUrlText))
+        {
             return null;
         }
 
@@ -191,21 +189,26 @@ public sealed class JumboProductParser : ISingletonDependency
 
         Uri? imageUrl = null;
 
-        if (TryGetString(product, "image", out var imageUrlText)) {
+        if (TryGetString(product, "image", out var imageUrlText))
+        {
             Uri.TryCreate(imageUrlText, UriKind.Absolute, out imageUrl);
         }
 
         string? brand = null;
 
-        if (product.TryGetProperty("brand", out var brandElement) && brandElement.ValueKind == JsonValueKind.Object && TryGetString(brandElement, "name", out var brandName)) {
+        if (product.TryGetProperty("brand", out var brandElement) && brandElement.ValueKind == JsonValueKind.Object &&
+            TryGetString(brandElement, "name", out var brandName))
+        {
             brand = brandName;
         }
 
-        if (!product.TryGetProperty("offers", out var offerElement) || offerElement.ValueKind != JsonValueKind.Object) {
+        if (!product.TryGetProperty("offers", out var offerElement) || offerElement.ValueKind != JsonValueKind.Object)
+        {
             return null;
         }
 
-        if (!TryGetDecimal(offerElement, "price", out var price) || price <= 0) {
+        if (!TryGetDecimal(offerElement, "price", out var price) || price <= 0)
+        {
             return null;
         }
 
@@ -225,9 +228,11 @@ public sealed class JumboProductParser : ISingletonDependency
         var normalizedProductPath = NormalizeProductPath(productUrl.AbsolutePath);
         IReadOnlyCollection<string> categories = [];
 
-        if (categoriesByProductUrl.TryGetValue(normalizedProductPath, out var productCategories)) {
+        if (categoriesByProductUrl.TryGetValue(normalizedProductPath, out var productCategories))
+        {
             categories = productCategories;
         }
+
         var store = new Store { Code = "JUMBO", Name = "Jumbo" };
         return new Product(
             name: name,
@@ -257,6 +262,130 @@ public sealed class JumboProductParser : ISingletonDependency
 
         productUrl = null!;
         return false;
+    }
+
+    public async Task<string> ExtractRawJsonAsync(string html, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+            return "[]";
+
+        var htmlParser = new HtmlParser();
+        var document = await htmlParser.ParseDocumentAsync(
+            html,
+            cancellationToken);
+
+        var categoriesByUrl = GetCategoriesByProductUrl(document);
+
+        var products = new JsonArray();
+        var productIds = new HashSet<string>();
+
+        var scripts = document.QuerySelectorAll("script")
+            .Where(script => script.TextContent.Contains("self.__next_f.push("));
+
+        foreach (var script in scripts)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var scriptContent = script.TextContent;
+            var marker = "self.__next_f.push(";
+            var position = 0;
+
+            while ((position = scriptContent.IndexOf(marker,position,StringComparison.Ordinal)) >= 0)
+            {
+                var start = position + marker.Length;
+
+                if (!TryReadJsonValue(scriptContent.AsSpan(start), out var pushValue, out var consumed))
+                {
+                    position = start;
+                    continue;
+                }
+
+                position = start + consumed;
+
+                using (pushValue)
+                {
+                    var root = pushValue.RootElement;
+
+                    if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() < 2 || root[1].ValueKind != JsonValueKind.String)
+                        continue;
+
+                    var payload = root[1].GetString();
+
+                    if (string.IsNullOrEmpty(payload))
+                        continue;
+
+                    var searchPosition = 0;
+                    const string productMarker = "\"product\":{";
+
+                    while ((searchPosition = payload.IndexOf(productMarker, searchPosition, StringComparison.Ordinal)) >= 0)
+                    {
+                        var objectStart = searchPosition + "\"product\":".Length;
+
+                        if (!TryReadJsonValue(payload.AsSpan(objectStart), out var productDocument, out var productLength))
+                        {
+                            searchPosition = objectStart + 1;
+                            continue;
+                        }
+
+                        searchPosition = objectStart + productLength;
+
+                        using (productDocument)
+                        {
+                            var product = productDocument.RootElement;
+
+                            if (!TryGetString(product, "productId", out var productId))
+                                continue;
+
+                            if (!productIds.Add(productId))
+                                continue;
+
+                            var productNode = JsonNode.Parse(product.GetRawText())!.AsObject();
+
+                            if (TryGetString(product, "slug", out var slug))
+                            {
+                                var path = NormalizeProductPath($"/{slug}/p");
+
+                                if (categoriesByUrl.TryGetValue(path, out var categoryNames))
+                                {
+                                    productNode["categoryNames"] = new JsonArray(categoryNames.Select(category => (JsonNode?)JsonValue.Create(category)).ToArray());
+                                }
+                            }
+
+                            products.Add(productNode);
+                        }
+                    }
+                }
+            }
+        }
+
+        Console.WriteLine($"[JUMBO] Productos Raw extraídos: {products.Count}");
+
+        return products.ToJsonString(new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+    }
+
+    private static bool TryReadJsonValue(ReadOnlySpan<char> input, out JsonDocument document, out int consumed)
+    {
+        document = null!;
+        consumed = 0;
+
+        try
+        {
+            var bytes = Encoding.UTF8.GetBytes(input.ToString());
+
+            var reader = new Utf8JsonReader(bytes);
+
+            document = JsonDocument.ParseValue(ref reader);
+            consumed = Encoding.UTF8.GetCharCount(bytes.AsSpan(0, (int)reader.BytesConsumed));
+
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static string NormalizeProductPath(string url)

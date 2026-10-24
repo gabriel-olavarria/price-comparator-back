@@ -1,5 +1,4 @@
 using PriceComparator.Domain.Entities;
-using PriceComparator.Application.Models;
 
 namespace PriceComparator.Application.Interfaces.Services;
 

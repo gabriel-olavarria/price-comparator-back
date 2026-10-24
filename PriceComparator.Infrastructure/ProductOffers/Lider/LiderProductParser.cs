@@ -362,4 +362,68 @@ public sealed class LiderProductParser : ISingletonDependency
 
         return false;
     }
+    
+    public async Task<string> ExtractRawJsonAsync(string html, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+            return "[]";
+
+        var parser = new HtmlParser();
+
+        var document = await parser.ParseDocumentAsync(html, cancellationToken);
+
+        var nextDataElement = document.QuerySelector("script#__NEXT_DATA__");
+
+        if (nextDataElement is null || string.IsNullOrWhiteSpace(nextDataElement.TextContent))
+        {
+            Console.WriteLine("[LIDER][RAW] No se encontró __NEXT_DATA__.");
+            return "[]";
+        }
+
+        using var jsonDocument = JsonDocument.Parse(nextDataElement.TextContent);
+
+        if (!TryFindSearchResult(jsonDocument.RootElement, out var searchResult))
+        {
+            Console.WriteLine("[LIDER][RAW] No se encontró searchResult.");
+            return "[]";
+        }
+
+        if (!searchResult.TryGetProperty("itemStacks", out var itemStacks) || itemStacks.ValueKind != JsonValueKind.Array)
+        {
+            return "[]";
+        }
+
+        var products = new List<JsonElement>();
+
+        foreach (var stack in itemStacks.EnumerateArray())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (stack.ValueKind != JsonValueKind.Object ||
+                IsSponsoredStack(stack))
+                continue;
+
+            if (!stack.TryGetProperty("items", out var items) ||
+                items.ValueKind != JsonValueKind.Array)
+                continue;
+
+            foreach (var product in items.EnumerateArray())
+            {
+                if (!IsProduct(product))
+                    continue;
+
+                products.Add(product.Clone());
+            }
+        }
+
+        Console.WriteLine(
+            $"[LIDER][RAW] Productos extraídos: {products.Count}");
+
+        return JsonSerializer.Serialize(
+            products,
+            new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+    }
 }

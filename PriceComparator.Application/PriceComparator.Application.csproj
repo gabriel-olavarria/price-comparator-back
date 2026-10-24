@@ -17,7 +17,8 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Folder Include="UseCases\SearchProduct\Criteria\" />
+      <Folder Include="UseCases\MetricProduct\Get\" />
+      <Folder Include="UseCases\MetricProduct\Validators\" />
     </ItemGroup>
 
 </Project>

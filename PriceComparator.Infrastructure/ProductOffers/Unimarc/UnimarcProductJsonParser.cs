@@ -14,10 +14,7 @@ public sealed class UnimarcProductJsonParser : ITransientDependency
     {
         using var document = JsonDocument.Parse(json);
 
-        if (!document.RootElement.TryGetProperty(
-                "availableProducts",
-                out var availableProducts)
-            || availableProducts.ValueKind != JsonValueKind.Array)
+        if (!document.RootElement.TryGetProperty("availableProducts", out var availableProducts) || availableProducts.ValueKind != JsonValueKind.Array)
         {
             throw new JsonException(
                 "La respuesta de Unimarc no contiene availableProducts.");
@@ -84,7 +81,7 @@ public sealed class UnimarcProductJsonParser : ITransientDependency
                 imageUrl: imageUrl,
                 brand: brand,
                 sellerName: null,
-                categories: categories,
+                categoriesStore: categories,
                 availability: availability
             );
             /*product.Clasification = new Clasification
@@ -97,58 +94,40 @@ public sealed class UnimarcProductJsonParser : ITransientDependency
                 )
             };*/
             
-
             products.Add(product);
         }
 
-        return products
-            .DistinctBy(product => product.ProductUrl)
-            .ToArray();
+        return products.DistinctBy(product => product.ProductUrl).ToArray();
     }
 
-    private static string? GetString(
-        JsonElement element,
-        string propertyName)
+    private static string? GetString(JsonElement element, string propertyName)
     {
-        if (!element.TryGetProperty(
-                propertyName,
-                out var property))
+        if (!element.TryGetProperty(propertyName, out var property)) 
             return null;
 
-        return property.ValueKind == JsonValueKind.String
-            ? property.GetString()
-            : null;
+        return property.ValueKind == JsonValueKind.String ? property.GetString() : null;
     }
 
-    private static IReadOnlyCollection<string> GetCategories(
-        JsonElement item)
+    private static IReadOnlyCollection<string> GetCategories(JsonElement item)
     {
-        if (!item.TryGetProperty(
-                "categories",
-                out var categories)
-            || categories.ValueKind != JsonValueKind.Array)
+        if (!item.TryGetProperty("categories", out var categories) || categories.ValueKind != JsonValueKind.Array)
         {
             return [];
         }
 
         return categories
             .EnumerateArray()
-            .Where(value =>
-                value.ValueKind == JsonValueKind.String)
+            .Where(value => value.ValueKind == JsonValueKind.String)
             .Select(value => value.GetString())
             .OfType<string>()
-            .Where(value =>
-                !string.IsNullOrWhiteSpace(value))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
     private static Uri? GetImageUrl(JsonElement item)
     {
-        if (!item.TryGetProperty(
-                "images",
-                out var images)
-            || images.ValueKind != JsonValueKind.Array)
+        if (!item.TryGetProperty("images", out var images) || images.ValueKind != JsonValueKind.Array)
         {
             return null;
         }
@@ -160,11 +139,7 @@ public sealed class UnimarcProductJsonParser : ITransientDependency
 
             var imageText = image.GetString();
 
-            if (Uri.TryCreate(
-                    imageText,
-                    UriKind.Absolute,
-                    out var imageUrl)
-                && imageUrl.Scheme == Uri.UriSchemeHttps)
+            if (Uri.TryCreate(imageText, UriKind.Absolute, out var imageUrl) && imageUrl.Scheme == Uri.UriSchemeHttps)
             {
                 return imageUrl;
             }
@@ -173,51 +148,28 @@ public sealed class UnimarcProductJsonParser : ITransientDependency
         return null;
     }
 
-    private static string? GetAvailability(
-        JsonElement priceData)
+    private static string? GetAvailability(JsonElement priceData)
     {
-        if (!priceData.TryGetProperty(
-                "availableQuantity",
-                out var quantity))
+        if (!priceData.TryGetProperty("availableQuantity", out var quantity))
         {
             return null;
         }
 
-        if (quantity.ValueKind != JsonValueKind.Number
-            || !quantity.TryGetInt32(
-                out var availableQuantity))
+        if (quantity.ValueKind != JsonValueKind.Number || !quantity.TryGetInt32(out var availableQuantity))
         {
             return null;
         }
-
-        return availableQuantity > 0
-            ? "Disponible"
-            : "Sin stock";
+        return availableQuantity > 0 ? "Disponible" : "Sin stock";
     }
 
-    private static bool TryParsePrice(
-        string? priceText,
-        out decimal price)
+    private static bool TryParsePrice(string? priceText, out decimal price)
     {
         price = 0;
 
         if (string.IsNullOrWhiteSpace(priceText))
             return false;
 
-        // Ejemplo:
-        // "$1.000" -> "1000"
-        // "$12.990" -> "12990"
-
-        var normalized = priceText
-            .Replace("$", "")
-            .Replace(".", "")
-            .Replace(" ", "")
-            .Trim();
-
-        return decimal.TryParse(
-            normalized,
-            NumberStyles.Number,
-            CultureInfo.GetCultureInfo("es-CL"),
-            out price);
+        var normalized = priceText.Replace("$", "").Replace(".", "").Replace(" ", "").Trim();
+        return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.GetCultureInfo("es-CL"), out price);
     }
 }

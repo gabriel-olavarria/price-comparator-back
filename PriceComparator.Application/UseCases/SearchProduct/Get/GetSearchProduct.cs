@@ -3,6 +3,7 @@ using PriceComparator.Application.Interfaces.DependencyInjection;
 using PriceComparator.Application.Interfaces.Repositories;
 using PriceComparator.Application.Interfaces.Services;
 using PriceComparator.Domain.Entities;
+using PriceComparator.Domain.Services;
 
 
 namespace PriceComparator.Application.UseCases.SearchProduct.Get;
@@ -20,6 +21,7 @@ public sealed class GetSearchProduct(
     public async Task<ProductResponse> ExecuteAsync(ProductRequest request, CancellationToken cancellationToken = default)
     {
         var query = request.Query?.Trim();
+        var normalizedQuery = NormalizerService.Normalize(query);
         var concepts = await conceptRepository.GetAllAsync(cancellationToken);
         var productsByStore = new Dictionary<string, IReadOnlyCollection<Product>>(StringComparer.OrdinalIgnoreCase);
 
@@ -27,21 +29,27 @@ public sealed class GetSearchProduct(
         {
             try
             {
-                
-                Console.WriteLine($"{searcher.GetType().FullName} | StoreCode={searcher.StoreCode}");
-                
-                 // 1. Obtener ofertas desde el supermercado.
+                var processedProducts = await searcher.GetProcessedProductsAsync(query!, cancellationToken);
+
+                if (processedProducts is not null)
+                {
+                    productsByStore[searcher.StoreCode] = processedProducts;
+                    Console.WriteLine( $"Se usa cache existente | StoreCode={searcher.StoreCode}");
+                    continue;
+                }
+
+                // 1. Obtener ofertas desde el supermercado.
                 var offers = await searcher.SearchAsync(query!, cancellationToken);
                 
                 // 2. Eliminar ofertas duplicadas.
                 var uniqueOffers = productService.RemoveDuplicates(offers);
-
-                var products = productService.PrepareProducts(query!, uniqueOffers, concepts);
+                var products = productService.PrepareProducts(query!, normalizedQuery, uniqueOffers, concepts);
                 
                 // 3. Calcular la relevancia de los productos.
                 products = rankedService.Rank(query!, products);
                  
-                // 4. Guardar los productos por tienda.
+                // 4. Guardar los productos por supermercado.
+                await searcher.SaveProducts(products, query!, cancellationToken);
                 productsByStore[searcher.StoreCode] = products;
             }
             catch (OperationCanceledException)when (cancellationToken.IsCancellationRequested)
@@ -56,7 +64,6 @@ public sealed class GetSearchProduct(
         }
 
         var totalResults = productsByStore.Values.Sum(products => products.Count);
-       
         var productsCanonicals = productsByStore
             .SelectMany(store => store.Value)
             .ToArray();
@@ -64,10 +71,7 @@ public sealed class GetSearchProduct(
         var canonicalGroups = canonicalService.GroupByCanonicalKey(productsCanonicals);
         var cheapestByStoreGroups = canonicalService.GetCheapestByStore(canonicalGroups);
         
-        return new ProductResponse(
-            Query: query!,
-            TotalResults: totalResults,
-            Stores: productsByStore);
+        return new ProductResponse(Query: query!, TotalResults: totalResults, Stores: productsByStore);
     }
     
 }

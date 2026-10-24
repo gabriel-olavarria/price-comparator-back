@@ -18,7 +18,7 @@ public sealed class Product
     public string? Availability { get; }
     public string? CanonicalKey { get; set; }
     public double Score { get; set; } = 0;
-    public Normalized Normalized { get; set; }
+    public Normalized? Normalized { get; set; }
     public Clasification? Clasification { get; set; }
 
     public Product(string name, decimal price, Store store, Uri productUrl, Uri? imageUrl = null, string? brand = null, string? sellerName = null, IReadOnlyCollection<string>? categoriesStore  = null, string? availability = null) {
