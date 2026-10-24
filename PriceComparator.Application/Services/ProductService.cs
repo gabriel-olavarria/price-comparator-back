@@ -1,5 +1,6 @@
 using PriceComparator.Application.Interfaces.DependencyInjection;
 using PriceComparator.Application.Interfaces.Services;
+using PriceComparator.Application.UseCases.MetricProduct.Get;
 using PriceComparator.Domain.Entities;
 using PriceComparator.Domain.Services;
 using PriceComparator.Domain.ValueObjects;
@@ -58,7 +59,27 @@ public class ProductService(
         return product;
     }
 
-     
+    public IReadOnlyList<StoreProductTotal> GetTotalProductsByStore(IReadOnlyDictionary<string, IReadOnlyCollection<Product>> stores)
+    {
+        return stores
+            .Select(store => new StoreProductTotal(TotalProducts: store.Value.Count, Store: store.Key
+            ))
+            .OrderByDescending(x => x.TotalProducts)
+            .ToArray();
+    }
+
+    public IReadOnlyList<CanonicalProductTotal> GetTotalCanonicalKeysByStore(IReadOnlyDictionary<string, IReadOnlyCollection<Product>> stores)
+    {
+        return stores
+            .Select(store => new CanonicalProductTotal(TotalCanonicalKey: store.Value
+                    .Where(product => !string.IsNullOrWhiteSpace(product.CanonicalKey))
+                    .Select(product => product.CanonicalKey!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count(), Store: store.Key
+            ))
+            .OrderByDescending(x => x.TotalCanonicalKey)
+            .ToArray();
+    }
 }
 
  

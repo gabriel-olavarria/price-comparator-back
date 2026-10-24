@@ -27,24 +27,36 @@ public class CanonicalService : ICanonicalService, ISingletonDependency
         return product;
     }
     
-    public IReadOnlyCollection<CanonicalGroupModel> GroupByCanonicalKey(IEnumerable<Product> products)
+    public IReadOnlyCollection<CanonicalGroupModel> GroupByCanonicalKey(IReadOnlyDictionary<string, IReadOnlyCollection<Product>> stores)
     {
-        return
-        [
-            .. products
-                .Where(product => !string.IsNullOrWhiteSpace(product.CanonicalKey))
-                .GroupBy(product => product.CanonicalKey!)
-                .Select(group => new CanonicalGroupModel(CanonicalKey: group.Key, Products: group.ToArray()))
-        ];
+        return stores
+            .SelectMany(store => store.Value)
+            .Where(product => !string.IsNullOrWhiteSpace(product.CanonicalKey))
+            .GroupBy(product => product.CanonicalKey!, StringComparer.OrdinalIgnoreCase
+            )
+            .Select(group => new CanonicalGroupModel(CanonicalKey: group.Key, Products: group.ToList()
+            )).ToList();
     }
     
     public IReadOnlyCollection<CanonicalGroupModel> GetCheapestByStore(IEnumerable<CanonicalGroupModel> groups)
     {
-        return groups.Select(group => new CanonicalGroupModel(CanonicalKey: group.CanonicalKey, Products: group.Products
-                    .GroupBy(product => product.Store.Code)
+        return groups
+            .Select(group => new CanonicalGroupModel(
+                CanonicalKey: group.CanonicalKey,
+                Products: group.Products
+                    .GroupBy(product => product.Store.Code, StringComparer.OrdinalIgnoreCase)
                     .Select(storeGroup => storeGroup.MinBy(product => product.Price)!)
                     .OrderBy(product => product.Price)
-                    .ToArray()))
+                    .ToArray()
+            )).ToArray();
+    }
+    
+    public IReadOnlyCollection<CanonicalGroupModel> Top10CheapestGroup(IReadOnlyCollection<CanonicalGroupModel> cheapestStore)
+    {
+        return cheapestStore
+            .Where(group => group.Products.Count > 0)
+            .OrderBy(group => group.Products.Min(product => product.Price))
+            .Take(10)
             .ToArray();
     }
 }

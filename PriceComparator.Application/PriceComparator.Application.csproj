@@ -16,9 +16,4 @@
       <PackageReference Include="Scrutor" Version="7.0.0" />
     </ItemGroup>
 
-    <ItemGroup>
-      <Folder Include="UseCases\MetricProduct\Get\" />
-      <Folder Include="UseCases\MetricProduct\Validators\" />
-    </ItemGroup>
-
 </Project>

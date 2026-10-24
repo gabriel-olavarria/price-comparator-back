@@ -8,17 +8,16 @@ using PriceComparator.Domain.Services;
 
 namespace PriceComparator.Application.UseCases.SearchProduct.Get;
 
-public sealed class GetSearchProduct(
+public sealed class GetSearchProductUseCase(
     IEnumerable<IProductOfferSearcher> searchers,
     IConceptRepository conceptRepository,
     IRankedService rankedService,
-    IProductService productService,
-    ICanonicalService canonicalService)
+    IProductService productService)
     : IScopedDependency
 {
     private readonly IReadOnlyCollection<IProductOfferSearcher> _searchers = searchers.ToArray();
 
-    public async Task<ProductResponse> ExecuteAsync(ProductRequest request, CancellationToken cancellationToken = default)
+    public async Task<SearchResponse> ExecuteAsync(ProductRequest request, CancellationToken cancellationToken = default)
     {
         var query = request.Query?.Trim();
         var normalizedQuery = NormalizerService.Normalize(query);
@@ -64,14 +63,8 @@ public sealed class GetSearchProduct(
         }
 
         var totalResults = productsByStore.Values.Sum(products => products.Count);
-        var productsCanonicals = productsByStore
-            .SelectMany(store => store.Value)
-            .ToArray();
-
-        var canonicalGroups = canonicalService.GroupByCanonicalKey(productsCanonicals);
-        var cheapestByStoreGroups = canonicalService.GetCheapestByStore(canonicalGroups);
-        
-        return new ProductResponse(Query: query!, TotalResults: totalResults, Stores: productsByStore);
+ 
+        return new SearchResponse(Query: query!, TotalResults: totalResults, Stores: productsByStore);
     }
     
 }
