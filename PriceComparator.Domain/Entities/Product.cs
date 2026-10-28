@@ -17,6 +17,7 @@ public sealed class Product
     public IReadOnlyCollection<string> CategoriesStore { get; }
     public string? Availability { get; }
     public string? CanonicalKey { get; set; }
+    public string? CanonicalName { get; set; }
     public double Score { get; set; } = 0;
     public Normalized? Normalized { get; set; }
     public Clasification? Clasification { get; set; }

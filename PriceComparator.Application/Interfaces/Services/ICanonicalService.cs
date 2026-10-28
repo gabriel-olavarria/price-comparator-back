@@ -10,5 +10,6 @@ public interface ICanonicalService
     IReadOnlyCollection<CanonicalGroupModel> GroupByCanonicalKey( IReadOnlyDictionary<string, IReadOnlyCollection<Product>> stores);
     IReadOnlyCollection<CanonicalGroupModel> GetCheapestByStore(IEnumerable<CanonicalGroupModel> groups);
     IReadOnlyCollection<CanonicalGroupModel> Top10CheapestGroup(IReadOnlyCollection<CanonicalGroupModel> cheapestStore);
+    IReadOnlyCollection<CheapestStoreTotalModel> GetCheapestStoreTotals(IEnumerable<CanonicalGroupModel> cheapestStore);
 
 }

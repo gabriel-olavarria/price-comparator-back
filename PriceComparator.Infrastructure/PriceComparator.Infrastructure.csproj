@@ -34,8 +34,13 @@
     <ItemGroup>
       <Folder Include="Storage\Data\Processed\Jumbo\" />
       <Folder Include="Storage\Data\Processed\Lider\" />
+      <Folder Include="Storage\Data\Processed\SantaIsabel\" />
       <Folder Include="Storage\Data\Processed\Tottus\" />
       <Folder Include="Storage\Data\Processed\Unimarc\" />
+      <Folder Include="Storage\Data\Raw\Jumbo\" />
+      <Folder Include="Storage\Data\Raw\Lider\" />
+      <Folder Include="Storage\Data\Raw\SantaIsabel\" />
+      <Folder Include="Storage\Data\Raw\Tottus\" />
       <Folder Include="Storage\Data\Raw\Unimarc\" />
     </ItemGroup>
 

@@ -25,10 +25,10 @@ public sealed class SantaIsabelProductOfferSearcher : IProductOfferSearcher, ITr
         var normalizedQuery = query.Trim();
         var storedOffers = await _productStore.GetAsync(StoreCode, normalizedQuery, cancellationToken);
         
-        if (storedOffers is null)
+        if (storedOffers is not null)
         {
-            Console.WriteLine("[SANTA ISABEL] No hay datos almacenados vigentes. Consultando Santa Isabel.");
-            return [];
+            Console.WriteLine($"[SANTA ISABEL] Usando productos almacenados: {storedOffers.Count}");
+            return storedOffers;
         }
 
         var html = await SearchLiveAsync(normalizedQuery, cancellationToken);

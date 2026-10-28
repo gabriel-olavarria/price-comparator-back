@@ -14,6 +14,7 @@ public class CanonicalService : ICanonicalService, ISingletonDependency
         if (classification?.Subtype is null)
         {
             product.CanonicalKey = null;
+            product.CanonicalName = null;
             return product;
         }
 
@@ -23,6 +24,11 @@ public class CanonicalService : ICanonicalService, ISingletonDependency
             $"{classification.Subtype}_" +
             $"{classification.Measurement?.QuantityUnit}" +
             $"{classification.Measurement?.Unit}";
+        
+        product.CanonicalName =  $"{classification.Id} " +
+                                 $"{classification.Subtype.Replace("-", " ")} " +
+                                 $"{classification.Measurement?.QuantityUnit} " +
+                                 $"{classification.Measurement?.Unit} ";
 
         return product;
     }
@@ -32,9 +38,11 @@ public class CanonicalService : ICanonicalService, ISingletonDependency
         return stores
             .SelectMany(store => store.Value)
             .Where(product => !string.IsNullOrWhiteSpace(product.CanonicalKey))
-            .GroupBy(product => product.CanonicalKey!, StringComparer.OrdinalIgnoreCase
-            )
-            .Select(group => new CanonicalGroupModel(CanonicalKey: group.Key, Products: group.ToList()
+            .GroupBy(product => product.CanonicalKey!, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new CanonicalGroupModel(
+                CanonicalKey: group.Key,
+                CanonicalName: group.Select(product => product.CanonicalName).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)),
+                Products: group.ToList()
             )).ToList();
     }
     
@@ -43,6 +51,7 @@ public class CanonicalService : ICanonicalService, ISingletonDependency
         return groups
             .Select(group => new CanonicalGroupModel(
                 CanonicalKey: group.CanonicalKey,
+                CanonicalName: group.CanonicalName,
                 Products: group.Products
                     .GroupBy(product => product.Store.Code, StringComparer.OrdinalIgnoreCase)
                     .Select(storeGroup => storeGroup.MinBy(product => product.Price)!)
@@ -57,6 +66,39 @@ public class CanonicalService : ICanonicalService, ISingletonDependency
             .Where(group => group.Products.Count > 0)
             .OrderBy(group => group.Products.Min(product => product.Price))
             .Take(10)
+            .ToArray();
+    }
+    
+    public IReadOnlyCollection<CheapestStoreTotalModel> GetCheapestStoreTotals(IEnumerable<CanonicalGroupModel> groups)
+    {
+        return groups
+            .Where(group => group.Products.Any())
+            .Select(group => new
+            {
+                group.CanonicalKey,
+                group.CanonicalName,
+                Product = group.Products.MinBy(product => product.Price)!,
+            })
+            .GroupBy(
+                item => item.Product.Store.Code,
+                StringComparer.OrdinalIgnoreCase
+            )
+            .Select(storeGroup => new CheapestStoreTotalModel(
+                Store: storeGroup.Key,
+                SellerName: storeGroup
+                    .Select(item => item.Product.Store.Name)
+                    .FirstOrDefault() ?? string.Empty,
+                TotalCanonicalEconomic: storeGroup
+                    .Select(item => item.CanonicalKey)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count(),
+                Canonical: storeGroup
+                    .Select(item => new CheapestCanonicalProduct(
+                        CanonicalKey: item.CanonicalKey,
+                        CanonicalName: item.CanonicalName,
+                        Product: item.Product
+                    )).ToArray()))
+            .OrderByDescending(store => store.TotalCanonicalEconomic)
             .ToArray();
     }
 }

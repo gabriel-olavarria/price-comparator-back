@@ -32,7 +32,7 @@ public sealed class GetSearchProductUseCase(
 
                 if (processedProducts is not null)
                 {
-                    productsByStore[searcher.StoreCode] = processedProducts;
+                    productsByStore[searcher.StoreCode] = processedProducts.OrderBy(p => p.Price).ToList();
                     Console.WriteLine( $"Se usa cache existente | StoreCode={searcher.StoreCode}");
                     continue;
                 }
@@ -49,7 +49,7 @@ public sealed class GetSearchProductUseCase(
                  
                 // 4. Guardar los productos por supermercado.
                 await searcher.SaveProducts(products, query!, cancellationToken);
-                productsByStore[searcher.StoreCode] = products;
+                productsByStore[searcher.StoreCode] = products.OrderBy(p => p.Price).ToList();
             }
             catch (OperationCanceledException)when (cancellationToken.IsCancellationRequested)
             {
