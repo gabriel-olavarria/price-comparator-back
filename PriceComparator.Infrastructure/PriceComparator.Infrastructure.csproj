@@ -14,9 +14,15 @@
 
     <ItemGroup>
       <PackageReference Include="AngleSharp" Version="1.7.0-beta.583" />
+      <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.14">
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        <PrivateAssets>all</PrivateAssets>
+      </PackageReference>
       <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.10" />
       <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.10" />
-      <PackageReference Include="Microsoft.Playwright" Version="1.61.0" />
+      <PackageReference Include="Npgsql" Version="10.0.3" />
+      <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+      <PackageReference Include="Primp" Version="0.1.0" />
       <PackageReference Include="Scrutor" Version="7.0.0" />
     </ItemGroup>
     
@@ -25,23 +31,6 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         
-    </ItemGroup>
-    <ItemGroup>
-        <None Update="Data/product-concepts.json">
-            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </None>
-    </ItemGroup>
-    <ItemGroup>
-      <Folder Include="Storage\Data\Processed\Jumbo\" />
-      <Folder Include="Storage\Data\Processed\Lider\" />
-      <Folder Include="Storage\Data\Processed\SantaIsabel\" />
-      <Folder Include="Storage\Data\Processed\Tottus\" />
-      <Folder Include="Storage\Data\Processed\Unimarc\" />
-      <Folder Include="Storage\Data\Raw\Jumbo\" />
-      <Folder Include="Storage\Data\Raw\Lider\" />
-      <Folder Include="Storage\Data\Raw\SantaIsabel\" />
-      <Folder Include="Storage\Data\Raw\Tottus\" />
-      <Folder Include="Storage\Data\Raw\Unimarc\" />
     </ItemGroup>
 
 </Project>

@@ -28,17 +28,18 @@ public sealed class GetSearchProductUseCase(
         {
             try
             {
-                var processedProducts = await searcher.GetProcessedProductsAsync(query!, cancellationToken);
+  
+                // 1. Obtener ofertas desde el supermercado.
+                var (offers, fromCache) = await searcher.SearchAsync(
+                    query!,
+                    cancellationToken);
 
-                if (processedProducts is not null)
+                // Si ya están procesados, devolver directamente.
+                if (fromCache)
                 {
-                    productsByStore[searcher.StoreCode] = processedProducts.OrderBy(p => p.Price).ToList();
-                    Console.WriteLine( $"Se usa cache existente | StoreCode={searcher.StoreCode}");
+                    productsByStore[searcher.StoreCode] = offers;
                     continue;
                 }
-
-                // 1. Obtener ofertas desde el supermercado.
-                var offers = await searcher.SearchAsync(query!, cancellationToken);
                 
                 // 2. Eliminar ofertas duplicadas.
                 var uniqueOffers = productService.RemoveDuplicates(offers);
@@ -46,9 +47,13 @@ public sealed class GetSearchProductUseCase(
                 
                 // 3. Calcular la relevancia de los productos.
                 products = rankedService.Rank(query!, products);
-                 
+
+              
                 // 4. Guardar los productos por supermercado.
-                await searcher.SaveProducts(products, query!, cancellationToken);
+                await searcher.SaveProcessed(products, query!, cancellationToken);
+            
+ 
+            
                 productsByStore[searcher.StoreCode] = products.OrderBy(p => p.Price).ToList();
             }
             catch (OperationCanceledException)when (cancellationToken.IsCancellationRequested)
@@ -57,7 +62,9 @@ public sealed class GetSearchProductUseCase(
             }
             catch (Exception exception)
             {
-                Console.WriteLine($"Error ejecutando {searcher.StoreCode}: " + $"{exception.GetType().Name} - " + $"{exception.Message}");
+                Console.WriteLine(
+                    $"Error ejecutando {searcher.StoreCode}: {exception}");
+
                 productsByStore[searcher.StoreCode] = [];
             }
         }

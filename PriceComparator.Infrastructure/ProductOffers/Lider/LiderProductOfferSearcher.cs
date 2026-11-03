@@ -1,82 +1,108 @@
+
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using PriceComparator.Application.DTOs.Extractions;
 using PriceComparator.Application.Interfaces.DependencyInjection;
+using PriceComparator.Application.Interfaces.Repositories;
 using PriceComparator.Application.Interfaces.Services;
 using PriceComparator.Domain.Entities;
-using PriceComparator.Infrastructure.Browsers;
-using PriceComparator.Infrastructure.Storage;
 
 namespace PriceComparator.Infrastructure.ProductOffers.Lider;
 
-public sealed class LiderProductOfferSearcher : IProductOfferSearcher, ITransientDependency
+public sealed class LiderProductOfferSearcher
+    : IProductOfferSearcher, ITransientDependency
 {
-    private readonly PlaywrightHtmlBrowser _browser;
+    private readonly LiderGraphQLClient _graphqlClient;
     private readonly LiderProductParser _parser;
-    private readonly JsonProductStore _productStore;
+    private readonly IExtractedSearcherRepository _extractedRepository;
+    private readonly IProcessedSearchRepository _processedRepository;
+    private readonly ILogger<LiderProductOfferSearcher> _logger;
 
     public string StoreCode => "Lider";
 
-    public LiderProductOfferSearcher(PlaywrightHtmlBrowser browser, LiderProductParser parser, JsonProductStore productStore)
+    public LiderProductOfferSearcher(
+        LiderGraphQLClient graphqlClient,
+        LiderProductParser parser,
+        IExtractedSearcherRepository extractedRepository,
+        IProcessedSearchRepository processedRepository,
+        ILogger<LiderProductOfferSearcher> logger)
     {
-        _browser = browser;
+        _graphqlClient = graphqlClient;
         _parser = parser;
-        _productStore = productStore;
+        _extractedRepository = extractedRepository;
+        _processedRepository = processedRepository;
+        _logger = logger;
     }
 
-    public async Task<IReadOnlyCollection<Product>> SearchAsync(string query, CancellationToken cancellationToken = default)
+    public async Task<(IReadOnlyCollection<Product> Products, bool FromCache)> SearchAsync(string query, CancellationToken cancellationToken = default)
     {
+        var normalizedQuery = query.Trim();
+
+        var cached = await _processedRepository.FindTodayAsync(
+            StoreCode,
+            normalizedQuery,
+            cancellationToken);
+
+        if (cached is { Products.Count: > 0 })
+        {
+            _logger.LogInformation(
+                "[LIDER] Usando {Count} productos almacenados.",
+                cached.Products.Count);
+
+            return (cached.Products, true);
+        }
+
+        var response = await _graphqlClient.SearchAsync(
+            normalizedQuery,
+            page: 1,
+            cancellationToken: cancellationToken);
+
+        var (rawJson, products) = _parser.ParseGraphQL(
+            response.Body,
+            cancellationToken);
+
+        using var document = JsonDocument.Parse(rawJson);
+        var rawCount = document.RootElement.GetArrayLength();
+
+        if (rawCount > 0)
+        {
+            await _extractedRepository.SaveAsync(
+                new RawExtractionDto(
+                    Store: StoreCode,
+                    Query: normalizedQuery,
+                    RawJson: rawJson,
+                    ProductCount: rawCount,
+                    ExtractedAt: DateTimeOffset.UtcNow),
+                cancellationToken);
+        }
+
+        _logger.LogInformation(
+            "[LIDER] Extracción completada. RAW: {RawCount}, productos válidos: {ProductCount}.",
+            rawCount,
+            products.Count);
+
+        return (products, false);
+    }
+
+    public async Task SaveProcessed(IReadOnlyCollection<Product> products, string query, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(products);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
 
         var normalizedQuery = query.Trim();
-        
-        // 1. Consultar productos procesados almacenados.
-        var storedOffers = await _productStore.GetAsync(StoreCode, normalizedQuery, cancellationToken);
 
-        if (storedOffers is not null)
-        {
-            Console.WriteLine($"[LIDER] Usando productos almacenados: {storedOffers.Count}");
-            return storedOffers;
-        }
+        await _processedRepository.SaveAsync(
+            new ProcessedTodayDto(
+                Store: StoreCode,
+                Query: normalizedQuery,
+                ProductCount: products.Count,
+                ProcessedAt: DateTime.UtcNow,
+                Products: products),
+            cancellationToken);
 
-        var html = await SearchLiveAsync(normalizedQuery, cancellationToken);
-        
-        //Almacenar entrada de datos
-        await SaveJson(html, normalizedQuery, cancellationToken);
-
-        
-        var offers = await _parser.ParseAsync(html, cancellationToken);
-        Console.WriteLine($"[LIDER] Productos encontrados: {offers.Count}");
-
-        return offers;
-    }
-
-    public async Task SaveProducts(IReadOnlyCollection<Product> products, string query, CancellationToken cancellationToken = default)
-    {
-        await _productStore.SaveAsync(StoreCode, query, products, cancellationToken);
-        Console.WriteLine($"[LIDER] {products.Count} productos guardados en JSON.");
-     
-    }
-    
-    public Task<IReadOnlyCollection<Product>?> GetProcessedProductsAsync(string query, CancellationToken cancellationToken = default)
-    {
-        return _productStore.GetAsync(StoreCode, query, cancellationToken);
-    }
-    
-    private async Task SaveJson(string html, string normalizedQuery, CancellationToken cancellationToken)
-    {
-        var rawJson = await _parser.ExtractRawJsonAsync(html, cancellationToken);
-
-        if (rawJson != "[]")
-        {
-            await _productStore.SaveRawAsync(StoreCode, normalizedQuery, rawJson, cancellationToken);
-        }
-    }
-    
-    
-    private async Task<string> SearchLiveAsync(string query, CancellationToken cancellationToken)
-    {
-        var encodedQuery = Uri.EscapeDataString(query);
-        var url = $"https://super.lider.cl/search?q={encodedQuery}";
-
-        Console.WriteLine($"[LIDER] Consultando tienda: {url}");
-
-        return await _browser.GetHtmlAsync(url, cancellationToken, waitAfterLoadMs: 0, keepPageOpenMs: 5000);
+        _logger.LogInformation(
+            "[LIDER] {Count} productos procesados guardados. Query: {Query}",
+            products.Count,
+            normalizedQuery);
     }
 }

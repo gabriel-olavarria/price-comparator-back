@@ -4,10 +4,20 @@ using PriceComparator.Application.Interfaces.Services;
 
 namespace PriceComparator.Api.Filters;
 
-public sealed class TurnstileValidationFilter(ITurnstileVerificationService verificationService) : IAsyncActionFilter
+public sealed class TurnstileValidationFilter(
+    ITurnstileVerificationService verificationService,
+    IWebHostEnvironment environment
+    ) : IAsyncActionFilter
 {
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
+        // Permitir solicitudes locales en Development.
+        if (environment.IsDevelopment())
+        {
+            await next();
+            return;
+        }
+        
         var token = context.HttpContext.Request.Headers["X-Turnstile-Token"].ToString();
 
         if (string.IsNullOrWhiteSpace(token))

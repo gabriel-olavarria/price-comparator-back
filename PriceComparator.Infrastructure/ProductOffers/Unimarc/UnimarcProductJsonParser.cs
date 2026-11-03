@@ -172,4 +172,19 @@ public sealed class UnimarcProductJsonParser : ITransientDependency
         var normalized = priceText.Replace("$", "").Replace(".", "").Replace(" ", "").Trim();
         return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.GetCultureInfo("es-CL"), out price);
     }
+    
+    public string ExtractRawJson(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+
+        if (!document.RootElement.TryGetProperty(
+                "availableProducts", out var products) ||
+            products.ValueKind != JsonValueKind.Array)
+        {
+            throw new JsonException(
+                "No se encontró el arreglo availableProducts de Unimarc.");
+        }
+
+        return products.GetRawText();
+    }
 }

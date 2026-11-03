@@ -1,3 +1,4 @@
+
 using PriceComparator.Application.Interfaces.DependencyInjection;
 using PriceComparator.Application.Interfaces.Services;
 using PriceComparator.Application.Models;
@@ -6,35 +7,39 @@ using PriceComparator.Domain.Services;
 
 namespace PriceComparator.Application.Services;
 
-public class ConceptService  : IConceptService, ISingletonDependency
+public class ConceptService : IConceptService, ISingletonDependency
 {
-    
-    public Concept? DetectFromText(string value, IReadOnlyCollection<Concept> concepts)
+    public Concept? DetectFromText(
+        string value,
+        IReadOnlyCollection<Concept> concepts)
     {
-
-        // 1. FRASES
-        // En la consulta, las frases tienen prioridad absoluta
-        // sobre los aliases.
-        var phraseMatches = FindMatches(value, concepts, concept => concept.Phrases, isPhrase: true);
-
-        if (phraseMatches.Count > 0)
+        if (string.IsNullOrWhiteSpace(value) || concepts.Count == 0)
         {
-            return SelectBestMatch(phraseMatches).Concept;
+            return null;
         }
 
-        // 2. ALIASES
-        var aliasMatches = FindMatches(value, concepts, concept => concept.Aliases, isPhrase: false);
+        var matches = FindMatches(value, concepts);
 
-        return aliasMatches.Count > 0 ? SelectBestMatch(aliasMatches).Concept : null;
+        return matches.Count > 0
+            ? SelectBestMatch(matches).Concept
+            : null;
     }
-    
-    private List<ConceptMatch> FindMatches(string value, IReadOnlyCollection<Concept> concepts, Func<Concept, IReadOnlyCollection<string>> termsSelector, bool isPhrase)
+
+    private static List<ConceptMatch> FindMatches(
+        string value,
+        IReadOnlyCollection<Concept> concepts)
     {
         var matches = new List<ConceptMatch>();
 
         foreach (var concept in concepts)
         {
-            foreach (var term in termsSelector(concept))
+            var terms = concept.Aliases
+                .Select(alias => alias.Name)
+                .Append(concept.Name)
+                .Where(term => !string.IsNullOrWhiteSpace(term))
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var term in terms)
             {
                 var index = NormalizerService.GetTermIndex(value, term);
 
@@ -43,19 +48,26 @@ public class ConceptService  : IConceptService, ISingletonDependency
                     continue;
                 }
 
-                matches.Add(new ConceptMatch(concept, term, index, isPhrase));
+                matches.Add(
+                    new ConceptMatch(
+                        concept,
+                        term,
+                        index,
+                        false));
             }
         }
+
         return matches;
     }
 
-    private ConceptMatch SelectBestMatch(IEnumerable<ConceptMatch> matches)
+    private static ConceptMatch SelectBestMatch(
+        IEnumerable<ConceptMatch> matches)
     {
         return matches
             .OrderBy(match => match.Index)
-            .ThenByDescending(match => NormalizerService.Normalize(match.Term).Length)
-            .ThenByDescending(match => match.IsPhrase)
+            .ThenByDescending(match =>
+                NormalizerService.Normalize(match.Term).Length)
+            .ThenBy(match => match.Concept.Id)
             .First();
     }
-    
 }

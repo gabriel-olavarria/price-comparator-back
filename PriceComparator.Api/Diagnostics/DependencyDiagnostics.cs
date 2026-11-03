@@ -1,38 +1,57 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace PriceComparator.Api.Diagnostics;
 
 public static class DependencyDiagnostics
 {
-    public static void Validate(IServiceProvider provider, IServiceCollection registrations, ILogger logger)
+    public static void Validate(
+        IServiceProvider provider,
+        IServiceCollection registrations,
+        ILogger logger)
     {
         using var scope = provider.CreateScope();
+
         var services = registrations
             .Where(x => x.ServiceType.IsInterface)
-            .Where(x => x.ServiceType.Namespace?.StartsWith("PriceComparator") == true)
+            .Where(x => x.ServiceType.Namespace?
+                .StartsWith("PriceComparator") == true)
+            .Where(x => !x.ServiceType.ContainsGenericParameters)
             .Select(x => x.ServiceType)
             .Distinct()
             .OrderBy(x => x.Name)
             .ToArray();
 
-        logger.LogInformation("Iniciando diagnóstico de {Count} dependencias", services.Length);
+        logger.LogInformation(
+            "Iniciando diagnóstico de {Count} dependencias",
+            services.Length);
 
         foreach (var serviceType in services)
         {
-            logger.LogInformation("Verificando: {Service}", serviceType.Name);
+            logger.LogInformation(
+                "Verificando: {Service}",
+                serviceType.Name);
 
             try
             {
                 scope.ServiceProvider.GetRequiredService(serviceType);
-                logger.LogInformation("{Service}: OK", serviceType.Name);
+
+                logger.LogInformation(
+                    "{Service}: OK",
+                    serviceType.Name);
             }
             catch (Exception exception)
             {
-                logger.LogError(exception, "ERROR: {Service}", serviceType.Name);
+                logger.LogError(
+                    exception,
+                    "ERROR: {Service}",
+                    serviceType.Name);
+
                 throw;
             }
         }
 
-        logger.LogInformation("Diagnóstico de dependencias finalizado correctamente");
+        logger.LogInformation(
+            "Diagnóstico de dependencias finalizado correctamente");
     }
 }

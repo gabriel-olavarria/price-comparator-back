@@ -1,106 +1,255 @@
 
+using System.Net;
 using System.Text.Json;
-using Microsoft.Playwright;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Primp;
+using PriceComparator.Application.DTOs.Extractions;
 using PriceComparator.Application.Interfaces.DependencyInjection;
+using PriceComparator.Application.Interfaces.Repositories;
 using PriceComparator.Application.Interfaces.Services;
 using PriceComparator.Domain.Entities;
-using PriceComparator.Infrastructure.Browsers;
-using PriceComparator.Infrastructure.Storage;
+using PriceComparator.Infrastructure.Persistence.Configurations;
 
 namespace PriceComparator.Infrastructure.ProductOffers.Unimarc;
 
-public sealed class UnimarcProductOfferSearcher : IProductOfferSearcher, ITransientDependency
+public sealed class UnimarcProductOfferSearcher
+    : IProductOfferSearcher, ITransientDependency
 {
     private const string SearchEndpoint =
         "https://bff-unimarc-ecommerce.unimarc.cl/catalog/product/search";
 
-    private readonly PlaywrightHtmlBrowser _browser;
     private readonly UnimarcProductJsonParser _parser;
-    private readonly JsonProductStore _productStore;
+    private readonly IExtractedSearcherRepository _extractedSearcherRepository;
+    private readonly IProcessedSearchRepository _processedSearchRepository;
+    private readonly ILogger<UnimarcProductOfferSearcher> _logger;
+    private readonly SupermarketExtractionOptions _options;
 
     public string StoreCode => "Unimarc";
 
-    public UnimarcProductOfferSearcher(PlaywrightHtmlBrowser browser, UnimarcProductJsonParser parser, JsonProductStore productStore)
+    public UnimarcProductOfferSearcher(
+        UnimarcProductJsonParser parser,
+        IExtractedSearcherRepository extractedSearcherRepository,
+        IProcessedSearchRepository processedSearchRepository,
+        ILogger<UnimarcProductOfferSearcher> logger,
+        IOptions<SupermarketExtractionOptions> options)
     {
-        _browser = browser;
         _parser = parser;
-        _productStore = productStore;
+        _extractedSearcherRepository = extractedSearcherRepository;
+        _processedSearchRepository = processedSearchRepository;
+        _logger = logger;
+        _options = options.Value;
     }
 
-    public async Task<IReadOnlyCollection<Product>> SearchAsync(string query, CancellationToken cancellationToken = default)
+    public async Task<(IReadOnlyCollection<Product> Products, bool FromCache)>
+        SearchAsync(
+            string query,
+            CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+
         var normalizedQuery = query.Trim();
 
-        // 1. Consultar productos procesados almacenados.
-        var storedOffers = await _productStore.GetAsync(StoreCode, normalizedQuery, cancellationToken);
-
-        if (storedOffers is not null)
+        // 1. Consultar productos procesados solamente
+        // cuando Force está deshabilitado.
+        if (!_options.Force)
         {
-            Console.WriteLine($"[UNIMARC] Usando productos almacenados: {storedOffers.Count}");
-            return storedOffers;
+            var processedSearch =
+                await _processedSearchRepository.FindTodayAsync(
+                    StoreCode,
+                    normalizedQuery,
+                    cancellationToken);
+
+            if (processedSearch is { Products.Count: > 0 })
+            {
+                _logger.LogInformation(
+                    "[UNIMARC] Usando {Count} productos almacenados.",
+                    processedSearch.Products.Count);
+
+                return (processedSearch.Products, true);
+            }
+        }
+        else
+        {
+            _logger.LogInformation(
+                "[UNIMARC] Force habilitado. Se realizará una nueva extracción para {Query}.",
+                normalizedQuery);
         }
 
-        // 2. Obtener productos desde JSON.
-        var offers = await SearchJsonAsync(normalizedQuery, cancellationToken);
+        // 2. Consultar productos nuevos mediante HTTP.
+        var offers = await SearchJsonAsync(
+            normalizedQuery,
+            cancellationToken);
 
-        return offers;
+        return (offers, false);
     }
 
-    private async Task<IReadOnlyCollection<Product>> SearchJsonAsync(string query, CancellationToken cancellationToken)
+    private async Task<IReadOnlyCollection<Product>> SearchJsonAsync(
+        string query,
+        CancellationToken cancellationToken)
     {
-        var url = BuildSearchUrl(query);
+        // Se conserva la búsqueda original:
+        // page = 1, pageSize = 40.
+        const int page = 1;
+        const int pageSize = 40;
 
-        try
+        var from = (page - 1) * pageSize;
+        var to = from + pageSize - 1;
+
+        var payload = new
         {
-            Console.WriteLine("[UNIMARC] Capturando JSON mediante Playwright...");
-            var json = await _browser.GetJsonResponseAsync(url, SearchEndpoint, cancellationToken);
-            Console.WriteLine($"[UNIMARC] JSON recibido: {json.Length} caracteres.");
-            
-            //Almacenar entrada de datos
-            await SaveJson(json, query, cancellationToken);
-            
-            var products = _parser.Parse(json);
-            Console.WriteLine($"[UNIMARC] Productos obtenidos desde JSON: {products.Count}");
-            return products;
-        }
-        catch (OperationCanceledException)
+            from = from.ToString(),
+            to = to.ToString(),
+            searching = query.Trim(),
+            promotionsOnly = false,
+            orderBy = "",
+            userTriggered = true
+        };
+
+        var jsonPayload = JsonSerializer.Serialize(payload);
+
+        // Encabezados utilizados en la prueba exitosa.
+        var headers = new Dictionary<string, string>
         {
-            throw;
-        }
-        catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException or PlaywrightException)
+            ["Accept"] = "application/json",
+            ["channel"] = "UNIMARC",
+            ["source"] = "web",
+            ["version"] = "1.0.0"
+        };
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // Cliente HTTP utilizado en la prueba que obtuvo
+        // HTTP 200 y 40 productos desde Unimarc.
+        using var client = PrimpClient.Builder()
+            .WithImpersonate(Impersonate.Chrome146)
+            .WithOS(ImpersonateOS.MacOS)
+            .WithTimeout(TimeSpan.FromSeconds(20))
+            .WithDefaultHeaders(headers)
+            .FollowRedirects(false)
+            .Build();
+
+        _logger.LogInformation(
+            "[UNIMARC] Consultando {Endpoint}. Query: {Query}",
+            SearchEndpoint,
+            query);
+
+        _logger.LogInformation(
+            "[UNIMARC] Payload: {Payload}",
+            jsonPayload);
+
+        using var response = await client.PostAsync(
+            SearchEndpoint,
+            jsonPayload,
+            "application/json");
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var json = response.ReadAsString();
+        var statusCode = (int)response.StatusCode;
+
+        _logger.LogInformation(
+            "[UNIMARC] Estado HTTP: {StatusCode}",
+            statusCode);
+
+        if (statusCode is < 200 or >= 300)
         {
-            Console.WriteLine($"[UNIMARC] Error procesando JSON: {ex.Message}");
-            return [];
+            _logger.LogWarning(
+                "[UNIMARC] HTTP {StatusCode}. Respuesta: {Body}",
+                statusCode,
+                json[..Math.Min(json.Length, 500)]);
+
+            throw new HttpRequestException(
+                $"Unimarc respondió HTTP {statusCode}.",
+                null,
+                (HttpStatusCode)statusCode);
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // 3. Guardar el JSON original en Neon.
+        await SaveExtracted(
+            json,
+            query,
+            cancellationToken);
+
+        // 4. Transformar la respuesta al modelo Product.
+        var products = _parser.Parse(json);
+
+        _logger.LogInformation(
+            "[UNIMARC] {Count} productos obtenidos. Query: {Query}",
+            products.Count,
+            query);
+
+        return products;
     }
 
-    public Task<IReadOnlyCollection<Product>?> GetProcessedProductsAsync(string query, CancellationToken cancellationToken = default)
+    private async Task SaveExtracted(
+        string json,
+        string normalizedQuery,
+        CancellationToken cancellationToken)
     {
-        return _productStore.GetAsync(StoreCode, query, cancellationToken);
-    }
+        var rawJson = _parser.ExtractRawJson(json);
 
-    
-    private static string BuildSearchUrl(string query)
-    {
-        var normalizedQuery = query.Trim().Replace(" ", "-");
-        var encodedQuery = Uri.EscapeDataString(normalizedQuery);
+        using var document = JsonDocument.Parse(rawJson);
 
-        return $"https://www.unimarc.cl/search?q={encodedQuery}";
-    }
-    
-    public async Task SaveProducts(IReadOnlyCollection<Product> products, string query, CancellationToken cancellationToken = default)
-    {
-        await _productStore.SaveAsync(StoreCode, query, products, cancellationToken);
-        Console.WriteLine($"[TOTTUS] {products.Count} productos guardados en JSON.");
-     
-    }
-    private async Task SaveJson(string json, string query, CancellationToken cancellationToken)
-    {
-        if (json.Length > 0)
+        if (document.RootElement.ValueKind != JsonValueKind.Array)
         {
-            await _productStore.SaveRawAsync(StoreCode, query, json, cancellationToken);
+            throw new JsonException(
+                "El JSON RAW de Unimarc debe ser un arreglo.");
         }
-    }
-  
 
+        var productCount = document.RootElement.GetArrayLength();
+
+        if (productCount == 0)
+        {
+            _logger.LogInformation(
+                "[UNIMARC] No se encontraron productos RAW para {Query}.",
+                normalizedQuery);
+
+            return;
+        }
+
+        var data = new RawExtractionDto(
+            Store: StoreCode,
+            Query: normalizedQuery,
+            RawJson: rawJson,
+            ProductCount: productCount,
+            ExtractedAt: DateTimeOffset.UtcNow);
+
+        await _extractedSearcherRepository.SaveAsync(
+            data,
+            cancellationToken);
+
+        _logger.LogInformation(
+            "[UNIMARC] {Count} productos RAW guardados en Neon.",
+            productCount);
+    }
+
+    public async Task SaveProcessed(
+        IReadOnlyCollection<Product> products,
+        string query,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(products);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+
+        var normalizedQuery = query.Trim();
+
+        var data = new ProcessedTodayDto(
+            Store: StoreCode,
+            Query: normalizedQuery,
+            ProductCount: products.Count,
+            ProcessedAt: DateTime.UtcNow,
+            Products: products);
+
+        await _processedSearchRepository.SaveAsync(
+            data,
+            cancellationToken);
+
+        _logger.LogInformation(
+            "[UNIMARC] {Count} productos procesados guardados en PostgreSQL. Query: {Query}",
+            products.Count,
+            normalizedQuery);
+    }
 }

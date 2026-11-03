@@ -1,3 +1,4 @@
+
 # ==============================
 # BUILD
 # ==============================
@@ -29,13 +30,12 @@ RUN dotnet publish "PriceComparator.Api.csproj" \
 # ==============================
 # RUNTIME
 # ==============================
-FROM mcr.microsoft.com/playwright/dotnet:v1.61.0-noble AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 
 WORKDIR /app
 
 COPY --from=build /app/publish .
 
-ENV ASPNETCORE_URLS=http://+:8080
 ENV ASPNETCORE_ENVIRONMENT=Production
 
 # Directorio donde se guardarán los snapshots

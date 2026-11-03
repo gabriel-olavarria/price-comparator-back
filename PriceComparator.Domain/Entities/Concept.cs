@@ -1,14 +1,16 @@
-using PriceComparator.Domain.ValueObjects;
+using PriceComparator.Domain.Common;
 
 namespace PriceComparator.Domain.Entities;
 
-public sealed class Concept
+public sealed class Concept : Entity<long>
 {
-    public string Id { get; set; } = string.Empty;
-    public string Category { get; set; } = string.Empty;
-    public List<string> Aliases { get; set; } = [];
-    public List<string> Phrases { get; set; } = [];
-    
-    public List<string> HeadTerms { get; set; } = [];
+    public string Name { get; set; } = string.Empty;
+
+    public long? CategoryId { get; set; }
+
+    public Category? Category { get; set; }
+
+    public List<Aliases> Aliases { get; set; } = [];
+
     public List<Subtype> Subtypes { get; set; } = [];
 }

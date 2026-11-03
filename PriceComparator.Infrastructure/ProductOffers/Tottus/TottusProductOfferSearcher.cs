@@ -1,8 +1,10 @@
-using PriceComparator.Application.Interfaces;
+using System.Text.Json;
 using PriceComparator.Application.Interfaces.DependencyInjection;
 using PriceComparator.Application.Interfaces.Services;
 using PriceComparator.Domain.Entities;
-using PriceComparator.Infrastructure.Storage;
+using Microsoft.Extensions.Logging;
+using PriceComparator.Application.DTOs.Extractions;
+using PriceComparator.Application.Interfaces.Repositories;
 
 namespace PriceComparator.Infrastructure.ProductOffers.Tottus;
 
@@ -14,40 +16,45 @@ public sealed class TottusProductOfferSearcher : IProductOfferSearcher, ITransie
     private readonly TottusProductParser _parser;
     private readonly TottusCategoryParser _categoryParser;
     private readonly TottusCategoryResolver _categoryResolver;
-    private readonly JsonProductStore _productStore;
+    private readonly ILogger<TottusProductOfferSearcher> _logger;
+    private readonly IExtractedSearcherRepository _extractedSearcherRepository;
+    private readonly IProcessedSearchRepository _processedSearchRepository;
+
     public string StoreCode => "Tottus";
 
-    public TottusProductOfferSearcher(HttpClient httpClient, TottusProductParser parser, TottusCategoryParser categoryParser, TottusCategoryResolver categoryResolver, JsonProductStore productStore)
+    public TottusProductOfferSearcher(HttpClient httpClient, 
+        TottusProductParser parser, 
+        TottusCategoryParser categoryParser, 
+        TottusCategoryResolver categoryResolver,
+        ILogger<TottusProductOfferSearcher> logger,
+        IExtractedSearcherRepository extractedSearcherRepository,
+        IProcessedSearchRepository processedSearchRepository)
     {
         _httpClient = httpClient;
         _parser = parser;
         _categoryParser = categoryParser;
         _categoryResolver = categoryResolver;
-        _productStore = productStore;
+        _logger = logger;
+        _extractedSearcherRepository = extractedSearcherRepository;
+        _processedSearchRepository = processedSearchRepository;
     }
 
-    public async Task<IReadOnlyCollection<Product>> SearchAsync(string query, CancellationToken cancellationToken = default)
+    public async Task<(IReadOnlyCollection<Product> Products, bool FromCache)> SearchAsync(string query, CancellationToken cancellationToken = default)
     {
 
-        query = query.Trim();
-        var storedProducts = await _productStore.GetAsync(StoreCode, query, cancellationToken);
+        var normalizedQuery = query.Trim();
+        var processedSearch = await _processedSearchRepository.FindTodayAsync(StoreCode, normalizedQuery, cancellationToken);
 
-        if (storedProducts is not null)
+        if (processedSearch is not null && processedSearch.Products.Count > 0)
         {
-            Console.WriteLine($"[TOTTUS] Usando productos almacenados: {storedProducts.Count}");
-            return storedProducts;
+            Console.WriteLine($"[TOTTUS] Usando productos almacenados: " + $"{processedSearch.ProductCount}");
+            return (processedSearch.Products, true);
         }
-
-        Console.WriteLine($"[TOTTUS] Resolviendo categoría para: {query}");
+        
         var catalogHtml = await GetHtmlAsync(CategoryCatalogUrl, cancellationToken);
         var categories = _categoryParser.Parse(catalogHtml);
         var candidates = _categoryResolver.Resolve(categories, query);
-
-        if (candidates.Count == 0)
-        {
-            Console.WriteLine($"[TOTTUS] No se encontraron categorías para: {query}");
-            return [];
-        }
+        
 
         foreach (var category in candidates) {
            
@@ -57,7 +64,7 @@ public sealed class TottusProductOfferSearcher : IProductOfferSearcher, ITransie
                 var categoryHtml = IsSameUrl(CategoryCatalogUrl, category.Url) ? catalogHtml : await GetHtmlAsync(category.Url, cancellationToken);
               
                 //Almacenar entrada de datos
-                await SaveJson(categoryHtml, query, cancellationToken);
+                await SaveExtracted(categoryHtml, query, cancellationToken);
                 
                 var offers = await _parser.ParseAsync(categoryHtml, cancellationToken);
                 Console.WriteLine($"[TOTTUS] Productos encontrados en " + $"{category.Name}: {offers.Count}");
@@ -68,7 +75,7 @@ public sealed class TottusProductOfferSearcher : IProductOfferSearcher, ITransie
                     continue;
                 }
                 
-                return offers;
+                return (offers, false);
             }
             catch (OperationCanceledException)when (cancellationToken.IsCancellationRequested)
             {
@@ -81,7 +88,7 @@ public sealed class TottusProductOfferSearcher : IProductOfferSearcher, ITransie
         }
 
         Console.WriteLine($"[TOTTUS] Ninguna categoría candidata entregó productos para: {query}");
-        return [];
+        return ([], false);
     }
 
     private async Task<string> GetHtmlAsync(string url, CancellationToken cancellationToken) {
@@ -99,28 +106,48 @@ public sealed class TottusProductOfferSearcher : IProductOfferSearcher, ITransie
         var second = new Uri(_httpClient.BaseAddress!, secondUrl);
         return first == second;
     }
+
     
-    public Task<IReadOnlyCollection<Product>?> GetProcessedProductsAsync(string query, CancellationToken cancellationToken = default)
-    {
-        return _productStore.GetAsync(StoreCode, query, cancellationToken);
-    }
-    
-    public async Task SaveProducts(IReadOnlyCollection<Product> products, string query, CancellationToken cancellationToken = default)
-    {
-        await _productStore.SaveAsync(StoreCode, query, products, cancellationToken);
-        Console.WriteLine($"[TOTTUS] {products.Count} productos guardados en JSON.");
-     
-    }
-    
-    private async Task SaveJson(string html, string normalizedQuery, CancellationToken cancellationToken)
+    private async Task SaveExtracted(string html, string normalizedQuery, CancellationToken cancellationToken)
     {
         var rawJson = await _parser.ExtractRawJsonAsync(html, cancellationToken);
 
-        if (rawJson != "[]")
-        {
-            await _productStore.SaveRawAsync(StoreCode, normalizedQuery, rawJson, cancellationToken);
-        }
+        if (string.IsNullOrWhiteSpace(rawJson) || rawJson == "[]")
+            return;
+
+        using var document = JsonDocument.Parse(rawJson);
+
+        var data = new RawExtractionDto(
+            Store: StoreCode,
+            Query: normalizedQuery,
+            RawJson: rawJson,
+            ProductCount: document.RootElement.GetArrayLength(),
+            ExtractedAt: DateTimeOffset.UtcNow
+        );
+
+        await _extractedSearcherRepository.SaveAsync(data, cancellationToken);
     }
+    
+    public async Task SaveProcessed(IReadOnlyCollection<Product> products, string query, CancellationToken cancellationToken = default)
+    {
+        var normalizedQuery = query.Trim();
+
+        var data = new ProcessedTodayDto(
+            Store: StoreCode,
+            Query: normalizedQuery,
+            ProductCount: products.Count,
+            ProcessedAt: DateTime.UtcNow,
+            Products: products
+        );
+
+        await _processedSearchRepository.SaveAsync(data, cancellationToken);
+
+        _logger.LogInformation(
+            "[TOTTUS] {Count} productos procesados guardados en PostgreSQL. Query: {Query}",
+            products.Count,
+            normalizedQuery);
+    }
+
 
 
 }
