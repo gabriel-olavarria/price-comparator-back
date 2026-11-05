@@ -6,7 +6,9 @@ using PriceComparator.Infrastructure.Persistence.Contexts;
 
 namespace PriceComparator.Infrastructure.Persistence.Repositories;
 
-public class Repository<TEntity, TId> : IRepository<TEntity, TId>, IScopedDependency where TEntity : Entity<TId>
+public class Repository<TEntity, TId> : 
+    IRepository<TEntity, TId>, 
+    IScopedDependency where TEntity : Entity<TId>
 {
     private readonly DbSet<TEntity> _entities;
 

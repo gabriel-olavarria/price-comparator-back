@@ -6,6 +6,8 @@ using AngleSharp.Html.Parser;
 using PriceComparator.Application.Interfaces.DependencyInjection;
 using PriceComparator.Domain.Entities;
 using PriceComparator.Domain.ValueObjects;
+using System.Net;
+using System.Text.RegularExpressions;
 
 namespace PriceComparator.Infrastructure.ProductOffers.Acuenta;
 
@@ -15,8 +17,7 @@ public sealed class AcuentaProductParser : ISingletonDependency
     private static readonly Uri BaseUri = new("https://www.acuenta.cl/");
     private static readonly Regex RecordLine = new(@"^([0-9a-fA-F]+):(.*)$", RegexOptions.Compiled);
 
-    public async Task<IReadOnlyCollection<Product>> ParseAsync(
-        string html, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyCollection<Product>> ParseAsync(string html, CancellationToken cancellationToken = default)
     {
         var records = await ReadRecordsAsync(html, cancellationToken);
         var products = new Dictionary<string, Product>(StringComparer.OrdinalIgnoreCase);
@@ -33,6 +34,12 @@ public sealed class AcuentaProductParser : ISingletonDependency
                 continue;
 
             var brand = TryString(value, "brand", out var b) ? b : null;
+            var description = TryString(value, "description", out var d)
+                ? d
+                : null;
+
+            var productName = GetProductName(name, description);
+            
             var images = ResolveStrings(value, "photosUrl", records);
             var imageUrl = images.Select(ToHttpUri).FirstOrDefault(uri => uri is not null);
             var available = value.TryGetProperty("isAvailable", out var availableElement) &&
@@ -43,7 +50,7 @@ public sealed class AcuentaProductParser : ISingletonDependency
                 $"search?name={Uri.EscapeDataString(sku)}&currentPage=1");
 
             products[sku] = new Product(
-                name: name,
+                name: productName,
                 price: price,
                 store: new Store { Code = "ACUENTA", Name = "aCuenta" },
                 productUrl: productUrl,
@@ -56,26 +63,43 @@ public sealed class AcuentaProductParser : ISingletonDependency
 
         return products.Values.ToArray();
     }
+    private static string GetProductName(string name, string? description)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+            return name;
 
-    public async Task<string> ExtractRawJsonAsync(
-        string html, CancellationToken cancellationToken = default)
+        var match = Regex.Match(
+            description,
+            @"<strong>\s*Variedad:\s*</strong>\s*([^<]+)",
+            RegexOptions.IgnoreCase);
+
+        if (!match.Success)
+            return name;
+
+        var variety = WebUtility.HtmlDecode(match.Groups[1].Value).Trim();
+
+        if (string.IsNullOrWhiteSpace(variety) ||
+            name.Contains(variety, StringComparison.OrdinalIgnoreCase))
+            return name;
+
+        return $"{name} - {variety}";
+    }
+    public async Task<string> ExtractRawJsonAsync(string html, CancellationToken cancellationToken = default)
     {
         var records = await ReadRecordsAsync(html, cancellationToken);
         var raw = records
-            .Where(pair => pair.Value.ValueKind == JsonValueKind.Object &&
-                           TryString(pair.Value, "__typename", out var type) &&
-                           type == "CatalogProductModel")
+            .Where(pair => pair.Value.ValueKind == JsonValueKind.Object && TryString(pair.Value, "__typename", out var type) && type == "CatalogProductModel")
             .Select(pair => new { id = pair.Key, product = pair.Value })
             .ToArray();
 
         return JsonSerializer.Serialize(raw);
     }
 
-    private static async Task<Dictionary<string, JsonElement>> ReadRecordsAsync(
-        string html, CancellationToken cancellationToken)
+    private static async Task<Dictionary<string, JsonElement>> ReadRecordsAsync(string html, CancellationToken cancellationToken)
     {
         var records = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
-        if (string.IsNullOrWhiteSpace(html)) return records;
+        if (string.IsNullOrWhiteSpace(html)) 
+            return records;
 
         var parser = new HtmlParser();
         var document = await parser.ParseDocumentAsync(html, cancellationToken);

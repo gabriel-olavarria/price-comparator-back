@@ -9,6 +9,7 @@ public sealed class Subtype : Entity<long>
     public long ConceptId { get; set; }
 
     public Concept Concept { get; set; } = null!;
-
+    
+    public string? Value { get; set; } = string.Empty;
     public List<Term> Terms { get; set; } = [];
 }

@@ -5,107 +5,78 @@ using PriceComparator.Application.Interfaces.Repositories;
 using PriceComparator.Application.Interfaces.Services;
 using PriceComparator.Domain.Entities;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using PriceComparator.Application.Interfaces.Persistence;
+using PriceComparator.Infrastructure.Persistence.Configurations;
 
 namespace PriceComparator.Infrastructure.ProductOffers.SantaIsabel;
 
-public sealed class SantaIsabelProductOfferSearcher : IProductOfferSearcher, ITransientDependency
+public sealed class SantaIsabelProductOfferSearcher(
+    HttpClient httpClient,
+    SantaIsabelProductParser parser,
+    IExtractedSearcherRepository extractedSearcherRepository,
+    IProcessedSearchRepository processedSearchRepository,
+    ILogger<SantaIsabelProductOfferSearcher> logger,
+    IOptions<SupermarketExtractionOptions> options,
+    IUnitOfWork unitOfWork)
+    : IProductOfferSearcher, ITransientDependency
 {
-    private readonly HttpClient _httpClient;
-    private readonly SantaIsabelProductParser _parser;
-    private readonly IExtractedSearcherRepository _extractedSearcherRepository;
-    private readonly IProcessedSearchRepository _processedSearchRepository;
-    private readonly ILogger<SantaIsabelProductOfferSearcher> _logger;
-    
     public string StoreCode => "SantaIsabel";
-
-    public SantaIsabelProductOfferSearcher(HttpClient httpClient, 
-        SantaIsabelProductParser parser, 
-        IExtractedSearcherRepository extractedSearcherRepository,  
-        IProcessedSearchRepository processedSearchRepository,
-        ILogger<SantaIsabelProductOfferSearcher> logger)
-    {
-        _httpClient = httpClient;
-        _parser = parser;
-        _extractedSearcherRepository = extractedSearcherRepository;
-        _processedSearchRepository = processedSearchRepository;
-        _logger = logger;
-    }
+    private readonly SupermarketExtractionOptions _options = options.Value;
 
     public async Task<(IReadOnlyCollection<Product> Products, bool FromCache)> SearchAsync(string query, CancellationToken cancellationToken = default)
     {
-
         var normalizedQuery = query.Trim();
-        var processedSearch = await _processedSearchRepository.FindTodayAsync(StoreCode, normalizedQuery, cancellationToken);
 
-        if (processedSearch is not null && processedSearch.Products.Count > 0)
+        // 1. Consultar productos procesados solamente
+        // cuando Force está deshabilitado.
+        if (!_options.Force)
         {
-            Console.WriteLine($"[SANTA ISABEL] Usando productos almacenados: " + $"{processedSearch.ProductCount}");
-            return (processedSearch.Products, true);
+            var processedSearch = await processedSearchRepository.FindTodayAsync(StoreCode, normalizedQuery, cancellationToken);
+
+            if (processedSearch is not null && processedSearch.Products.Count > 0)
+            {
+                Console.WriteLine($"[SANTA ISABEL] Usando productos almacenados: " + $"{processedSearch.ProductCount}");
+                return (processedSearch.Products, true);
+            }
+        }
+        else
+        {
+            logger.LogInformation("[SANTA ISABEL] Force habilitado. Se realizará una nueva extracción para {Query}.", normalizedQuery);
         }
 
         var html = await SearchLiveAsync(normalizedQuery, cancellationToken);
-        
-        //Almacenar entrada de datos
-        await SaveExtracted(html, normalizedQuery, cancellationToken);
-        
-        var offers = await _parser.ParseAsync(html, cancellationToken);
+        var rawJson = await parser.ExtractRawJsonAsync(html, cancellationToken);
+        //Guardar el JSON original en Neon.
+        await SaveExtracted(rawJson, normalizedQuery, cancellationToken);
+
+        var offers = await parser.ParseAsync(html, cancellationToken);
         Console.WriteLine($"[SANTA ISABEL] Productos encontrados: {offers.Count}");
-        
+
         return (offers, false);
     }
 
-     
-    private async Task SaveExtracted(string html, string normalizedQuery, CancellationToken cancellationToken)
-    {
-        var rawJson = await _parser.ExtractRawJsonAsync(html, cancellationToken);
-
-        if (string.IsNullOrWhiteSpace(rawJson) || rawJson == "[]")
-            return;
-
-        using var document = JsonDocument.Parse(rawJson);
-
-        var data = new RawExtractionDto(
-            Store: StoreCode,
-            Query: normalizedQuery,
-            RawJson: rawJson,
-            ProductCount: document.RootElement.GetArrayLength(),
-            ExtractedAt: DateTimeOffset.UtcNow
-        );
-
-        await _extractedSearcherRepository.SaveAsync(data, cancellationToken);
-    }
-    
     private async Task<string> SearchLiveAsync(string query, CancellationToken cancellationToken)
     {
         var encodedQuery = Uri.EscapeDataString(query);
         var requestUrl = $"/busqueda?ft={encodedQuery}";
-       
+
         Console.WriteLine($"[SANTA ISABEL] Consultando: {requestUrl}");
-        using var response = await _httpClient.GetAsync(requestUrl, cancellationToken);
-       
+        using var response = await httpClient.GetAsync(requestUrl, cancellationToken);
+
         Console.WriteLine($"[SANTA ISABEL] HTTP {(int)response.StatusCode} {response.StatusCode}");
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync(cancellationToken);
     }
-    
-    public async Task SaveProcessed(IReadOnlyCollection<Product> products, string query, CancellationToken cancellationToken = default)
+
+    public async Task SaveExtracted(string rawJson, string normalizedQuery, CancellationToken cancellationToken)
     {
-        var normalizedQuery = query.Trim();
-
-        var data = new ProcessedTodayDto(
-            Store: StoreCode,
-            Query: normalizedQuery,
-            ProductCount: products.Count,
-            ProcessedAt: DateTime.UtcNow,
-            Products: products
-        );
-
-        await _processedSearchRepository.SaveAsync(data, cancellationToken);
-
-        _logger.LogInformation(
-            "[SANTA ISABEL] {Count} productos procesados guardados en PostgreSQL. Query: {Query}",
-            products.Count,
-            normalizedQuery);
+        await extractedSearcherRepository.SaveExtractedAsync(StoreCode, normalizedQuery, rawJson, cancellationToken);
     }
 
+    public async Task SaveProcessed(IReadOnlyCollection<Product> products, string query,
+        CancellationToken cancellationToken = default)
+    {
+        await processedSearchRepository.SaveProcessedAsync(StoreCode, query, products, cancellationToken);
+    }
 }

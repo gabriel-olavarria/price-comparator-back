@@ -19,7 +19,7 @@ namespace PriceComparator.Infrastructure.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("PriceComparator")
-                .HasAnnotation("ProductVersion", "10.0.0")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -119,6 +119,101 @@ namespace PriceComparator.Infrastructure.Migrations
                     b.ToTable("ExtractedSearch", "PriceComparator");
                 });
 
+            modelBuilder.Entity("PriceComparator.Domain.Entities.Packaging", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Packaging", "PriceComparator");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1L,
+                            Name = "Lata"
+                        },
+                        new
+                        {
+                            Id = 2L,
+                            Name = "Botella"
+                        });
+                });
+
+            modelBuilder.Entity("PriceComparator.Domain.Entities.PackagingTerm", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<long>("PackagingId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PackagingId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("PackagingTerm", "PriceComparator");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1L,
+                            Name = "lata",
+                            PackagingId = 1L
+                        },
+                        new
+                        {
+                            Id = 2L,
+                            Name = "latas",
+                            PackagingId = 1L
+                        },
+                        new
+                        {
+                            Id = 3L,
+                            Name = "botella",
+                            PackagingId = 2L
+                        },
+                        new
+                        {
+                            Id = 4L,
+                            Name = "botellas",
+                            PackagingId = 2L
+                        },
+                        new
+                        {
+                            Id = 5L,
+                            Name = "desechable",
+                            PackagingId = 2L
+                        },
+                        new
+                        {
+                            Id = 6L,
+                            Name = "vidrio",
+                            PackagingId = 2L
+                        });
+                });
+
             modelBuilder.Entity("PriceComparator.Domain.Entities.ProcessedSearch", b =>
                 {
                     b.Property<long>("Id")
@@ -153,6 +248,47 @@ namespace PriceComparator.Infrastructure.Migrations
                     b.ToTable("ProcessedSearch", "PriceComparator");
                 });
 
+            modelBuilder.Entity("PriceComparator.Domain.Entities.ProductSearchRecord", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CanonicalKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CanonicalName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Query")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("character varying(250)");
+
+                    b.Property<DateTime>("SearchDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Store")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SearchDate");
+
+                    b.ToTable("ProductSearchRecord", "PriceComparator");
+                });
+
             modelBuilder.Entity("PriceComparator.Domain.Entities.Subtype", b =>
                 {
                     b.Property<long>("Id")
@@ -166,6 +302,9 @@ namespace PriceComparator.Infrastructure.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Value")
                         .HasColumnType("text");
 
                     b.HasKey("Id");
@@ -217,6 +356,17 @@ namespace PriceComparator.Infrastructure.Migrations
                     b.Navigation("Category");
                 });
 
+            modelBuilder.Entity("PriceComparator.Domain.Entities.PackagingTerm", b =>
+                {
+                    b.HasOne("PriceComparator.Domain.Entities.Packaging", "Packaging")
+                        .WithMany("Terms")
+                        .HasForeignKey("PackagingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Packaging");
+                });
+
             modelBuilder.Entity("PriceComparator.Domain.Entities.Subtype", b =>
                 {
                     b.HasOne("PriceComparator.Domain.Entities.Concept", "Concept")
@@ -249,6 +399,11 @@ namespace PriceComparator.Infrastructure.Migrations
                     b.Navigation("Aliases");
 
                     b.Navigation("Subtypes");
+                });
+
+            modelBuilder.Entity("PriceComparator.Domain.Entities.Packaging", b =>
+                {
+                    b.Navigation("Terms");
                 });
 
             modelBuilder.Entity("PriceComparator.Domain.Entities.Subtype", b =>

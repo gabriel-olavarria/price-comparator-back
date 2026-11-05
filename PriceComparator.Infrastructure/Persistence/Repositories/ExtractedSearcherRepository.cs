@@ -1,9 +1,7 @@
-
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PriceComparator.Application.DTOs.Extractions;
-using PriceComparator.Application.Interfaces.DependencyInjection;
 using PriceComparator.Application.Interfaces.Persistence;
 using PriceComparator.Application.Interfaces.Repositories;
 using PriceComparator.Domain.Entities;
@@ -11,155 +9,55 @@ using PriceComparator.Infrastructure.Persistence.Contexts;
 
 namespace PriceComparator.Infrastructure.Persistence.Repositories;
 
-public sealed class ExtractedSearcherRepository :
-    IExtractedSearcherRepository,
-    IScopedDependency
+public sealed class ExtractedSearcherRepository(
+    PriceComparatorDbContext context,
+    IUnitOfWork unitOfWork,
+    ILogger<ExtractedSearcherRepository> logger)
+    :
+        Repository<ExtractedSearch, long>(context),
+        IExtractedSearcherRepository
 {
     private static readonly TimeZoneInfo ChileTimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/Santiago");
-    private readonly PriceComparatorDbContext _context;
-    private readonly IUnitOfWork _unitOfWork;
-    private readonly ILogger<ExtractedSearcherRepository> _logger;
+    private readonly ILogger<ExtractedSearcherRepository> _logger = logger;
 
-    public ExtractedSearcherRepository(
-        PriceComparatorDbContext context,
-        IUnitOfWork unitOfWork,
-        ILogger<ExtractedSearcherRepository> logger)
+    public async Task<ExtractedSearch?> FindByStoreAndQueryAsync(string store, string query, CancellationToken cancellationToken = default)
     {
-        _context = context;
-        _unitOfWork = unitOfWork;
-        _logger = logger;
-    }
-
-    public async Task<ExtractedTodayDto?> FindTodayAsync(
-        string store,
-        string query,
-        CancellationToken cancellationToken = default)
-    {
-        var normalizedStore = Normalize(store);
-        var normalizedQuery = Normalize(query);
-
-        var nowUtc = DateTime.UtcNow;
-
-        var chileToday = TimeZoneInfo
-            .ConvertTimeFromUtc(nowUtc, ChileTimeZone)
-            .Date;
-
-        var startUtc = TimeZoneInfo.ConvertTimeToUtc(
-            chileToday,
-            ChileTimeZone);
-
-        var endUtc = TimeZoneInfo.ConvertTimeToUtc(
-            chileToday.AddDays(1),
-            ChileTimeZone);
-
-        var extraction = await _context.Set<ExtractedSearch>()
-            .AsNoTracking()
-            .Where(x =>
-                x.Store == normalizedStore &&
-                x.SearchQuery == normalizedQuery &&
-                x.ProductCount > 0 &&
-                x.ExtractedAt >= startUtc &&
-                x.ExtractedAt < endUtc)
-            .Select(x => new
-            {
-                x.Store,
-                x.SearchQuery,
-                x.ProductCount,
-                x.ExtractedAt,
-                x.Products
-            })
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (extraction is null)
-            return null;
-
-        return new ExtractedTodayDto(
-            extraction.Store,
-            extraction.SearchQuery,
-            extraction.ProductCount,
-            extraction.ExtractedAt,
-            extraction.Products.RootElement.GetRawText()
-        );
+        
+        return await context.Set<ExtractedSearch>()
+            .FirstOrDefaultAsync(x =>
+                    x.Store == store &&
+                    x.SearchQuery == query ,
+                cancellationToken);
     }
     
-    public async Task SaveAsync(RawExtractionDto data, CancellationToken cancellationToken = default)
+    public async Task SaveExtractedAsync(string store, string query, string rawJson, CancellationToken cancellationToken = default)
     {
-
-        var store = Normalize(data.Store);
-        var query = Normalize(data.Query);
-
-        if (string.IsNullOrWhiteSpace(data.RawJson))
-            throw new ArgumentException(
-                "El JSON original no puede estar vacío.",
-                nameof(data));
-
-        using var document = JsonDocument.Parse(data.RawJson);
-
-        if (document.RootElement.ValueKind != JsonValueKind.Array)
-            throw new ArgumentException(
-                "El JSON original debe ser un arreglo.",
-                nameof(data));
-
+        var normalizedQuery = query.Trim();
+        var document = JsonDocument.Parse(rawJson);
         var productCount = document.RootElement.GetArrayLength();
-
+        
         if (productCount == 0)
-            throw new InvalidOperationException(
-                "No se puede guardar una extracción sin productos.");
+            return;
 
-        if (data.ProductCount != productCount)
-            throw new InvalidOperationException(
-                "La cantidad de productos no coincide con el JSON.");
+        var extracted = await FindByStoreAndQueryAsync(store, normalizedQuery, cancellationToken);
 
-        if (data.ExtractedAt.Offset != TimeSpan.Zero)
-            throw new ArgumentException(
-                "ExtractedAt debe estar expresado en UTC.",
-                nameof(data));
-
-        var extractedAt = data.ExtractedAt.UtcDateTime;
-
-        var extraction = await _context.Set<ExtractedSearch>()
-            .FirstOrDefaultAsync(
-                x => x.Store == store &&
-                     x.SearchQuery == query,
-                cancellationToken);
-
-        if (extraction is null)
+        if (extracted is null)
         {
-            extraction = new ExtractedSearch
+            extracted = new ExtractedSearch
             {
                 Store = store,
-                SearchQuery = query,
-                Products = JsonDocument.Parse(data.RawJson),
-                ProductCount = productCount,
-                ExtractedAt = extractedAt
+                SearchQuery = normalizedQuery
             };
 
-            await _context.Set<ExtractedSearch>()
-                .AddAsync(extraction, cancellationToken);
-        }
-        else
-        {
-            extraction.Products = JsonDocument.Parse(data.RawJson);
-            extraction.ProductCount = productCount;
-            extraction.ExtractedAt = extractedAt;
+            await AddAsync(extracted, cancellationToken);
         }
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        extracted.Products = document;
+        extracted.ProductCount = productCount;
+        extracted.ExtractedAt = DateTime.UtcNow;
 
-        _logger.LogInformation(
-            "Extracción guardada en Neon. Store: {Store}, " +
-            "Query: {Query}, Products: {ProductCount}, " +
-            "ExtractedAt: {ExtractedAt}",
-            store,
-            query,
-            productCount,
-            extractedAt);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("[{store}] Extracción RAW guardada en PostgreSQL.", store);
     }
-
-    private static string Normalize(string value)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(value);
-
-        return value.Trim().ToLowerInvariant();
-    }
+    
 }

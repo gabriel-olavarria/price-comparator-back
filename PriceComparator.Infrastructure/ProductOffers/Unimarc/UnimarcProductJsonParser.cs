@@ -16,8 +16,7 @@ public sealed class UnimarcProductJsonParser : ITransientDependency
 
         if (!document.RootElement.TryGetProperty("availableProducts", out var availableProducts) || availableProducts.ValueKind != JsonValueKind.Array)
         {
-            throw new JsonException(
-                "La respuesta de Unimarc no contiene availableProducts.");
+            throw new JsonException("La respuesta de Unimarc no contiene availableProducts.");
         }
 
         var products = new List<Product>();
@@ -40,9 +39,6 @@ public sealed class UnimarcProductJsonParser : ITransientDependency
                 {
                     WriteIndented = true
                 });
-
-            Console.WriteLine("[UNIMARC] PRODUCTO ORIGINAL:");
-            Console.WriteLine(formattedJson);
             
             
             if (source.ValueKind != JsonValueKind.Object)
@@ -177,12 +173,9 @@ public sealed class UnimarcProductJsonParser : ITransientDependency
     {
         using var document = JsonDocument.Parse(json);
 
-        if (!document.RootElement.TryGetProperty(
-                "availableProducts", out var products) ||
-            products.ValueKind != JsonValueKind.Array)
+        if (!document.RootElement.TryGetProperty("availableProducts", out var products) || products.ValueKind != JsonValueKind.Array)
         {
-            throw new JsonException(
-                "No se encontró el arreglo availableProducts de Unimarc.");
+            throw new JsonException("No se encontró el arreglo availableProducts de Unimarc.");
         }
 
         return products.GetRawText();

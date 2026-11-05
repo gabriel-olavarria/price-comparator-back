@@ -53,15 +53,10 @@ public sealed class RankedService : IRankedService, ITransientDependency
         }
 
         // 4 Y 5. CONCEPTO DEL PRODUCTO
-        if (product.Clasification?.Id is not null)
+        if (product.Clasification?.Concept is not null)
         {
             score += 700;
             reasons.Add("Mismo concepto: +700");
-        }
-        else
-        {
-            score -= 800;
-            reasons.Add("Concepto diferente: -800");
         }
 
         // 6. CATEGORÍAS
@@ -111,14 +106,14 @@ public sealed class RankedService : IRankedService, ITransientDependency
             }
         }
 
-        if (product.Clasification?.Subtype is null)
+        if (string.IsNullOrWhiteSpace(product.Clasification?.SubtypeName))
         {
             score = 0;
         }
         
         var finalScore = NormalizerService.JavaScriptRound(score);
         var debug = new ProductScoreDebug(
-                    ProductConcept: product.Clasification?.Id,
+                    ProductConcept: product.Clasification?.Concept,
                     ExactName: exactName,
                     StartsWithQuery: startsWithQuery,
                     ContainsQuery: containsQuery,

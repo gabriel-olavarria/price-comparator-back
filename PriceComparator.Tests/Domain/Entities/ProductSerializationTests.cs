@@ -1,6 +1,7 @@
 
 using System.Text.Json;
 using PriceComparator.Domain.Entities;
+using PriceComparator.Domain.Enums;
 using PriceComparator.Domain.ValueObjects;
 using Xunit;
 
@@ -8,8 +9,7 @@ namespace PriceComparator.Tests.Domain.Entities;
 
 public sealed class ProductSerializationTests
 {
-    private static readonly JsonSerializerOptions JsonOptions =
-        new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     [Fact]
     public void SerializeAndDeserialize_ShouldPreserveProductData()
@@ -44,14 +44,14 @@ public sealed class ProductSerializationTests
 
             Clasification = new Clasification
             {
-                Id = "arroz",
+                Concept = "arroz",
                 Category = "Abarrotes",
-                Subtype = "Grado 1",
+                SubtypeName = "Grado 1",
                 Measurement = new Measurement(
                     UnitType: null,
                     Quantity: 1,
-                    QuantityUnit: 1,
-                    Unit: null
+                    1000,
+                    Unit.L
                 )
             }
         };

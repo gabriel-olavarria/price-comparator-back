@@ -1,5 +1,6 @@
 
 using PriceComparator.Application.Interfaces.DependencyInjection;
+using PriceComparator.Application.Interfaces.Persistence;
 using PriceComparator.Application.Interfaces.Repositories;
 using PriceComparator.Application.Interfaces.Services;
 using PriceComparator.Domain.Entities;
@@ -12,7 +13,9 @@ public sealed class GetSearchProductUseCase(
     IEnumerable<IProductOfferSearcher> searchers,
     IConceptRepository conceptRepository,
     IRankedService rankedService,
-    IProductService productService)
+    IProductService productService,
+    IUnitOfWork unitOfWork,
+    IPackagingRepository  packagingRepository)
     : IScopedDependency
 {
     private readonly IReadOnlyCollection<IProductOfferSearcher> _searchers = searchers.ToArray();
@@ -22,6 +25,7 @@ public sealed class GetSearchProductUseCase(
         var query = request.Query?.Trim();
         var normalizedQuery = NormalizerService.Normalize(query);
         var concepts = await conceptRepository.GetAllAsync(cancellationToken);
+        var packagings = await packagingRepository.GetAllWithTermsAsync(cancellationToken);
         var productsByStore = new Dictionary<string, IReadOnlyCollection<Product>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var searcher in _searchers)
@@ -30,9 +34,7 @@ public sealed class GetSearchProductUseCase(
             {
   
                 // 1. Obtener ofertas desde el supermercado.
-                var (offers, fromCache) = await searcher.SearchAsync(
-                    query!,
-                    cancellationToken);
+                var (offers, fromCache) = await searcher.SearchAsync(query!, cancellationToken);
 
                 // Si ya están procesados, devolver directamente.
                 if (fromCache)
@@ -43,17 +45,15 @@ public sealed class GetSearchProductUseCase(
                 
                 // 2. Eliminar ofertas duplicadas.
                 var uniqueOffers = productService.RemoveDuplicates(offers);
-                var products = productService.PrepareProducts(query!, normalizedQuery, uniqueOffers, concepts);
+                var products = await productService.PrepareProductsAsync(query!, normalizedQuery, uniqueOffers, concepts, packagings);
                 
+         
                 // 3. Calcular la relevancia de los productos.
                 products = rankedService.Rank(query!, products);
-
-              
+                
                 // 4. Guardar los productos por supermercado.
                 await searcher.SaveProcessed(products, query!, cancellationToken);
-            
- 
-            
+                
                 productsByStore[searcher.StoreCode] = products.OrderBy(p => p.Price).ToList();
             }
             catch (OperationCanceledException)when (cancellationToken.IsCancellationRequested)

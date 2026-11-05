@@ -1,5 +1,6 @@
 
 using PriceComparator.Application.Interfaces.DependencyInjection;
+using PriceComparator.Application.Interfaces.Repositories;
 using PriceComparator.Application.Interfaces.Services;
 using PriceComparator.Application.UseCases.MetricProduct.Get;
 using PriceComparator.Domain.Entities;
@@ -10,35 +11,42 @@ namespace PriceComparator.Application.Services;
 
 public class ProductService(
     IConceptService conceptService,
-    CanonicalService canonicalService
-) : IProductService, ISingletonDependency
+    CanonicalService canonicalService,
+    ISubTypeRepository subtypeRepository,
+    IProductSearchRecordRepository  productSearchRecordRepository,
+    IPackagingRepository  packagingRepository
+) : IProductService, IScopedDependency
 {
-    public IReadOnlyCollection<Product> PrepareProducts(
-        string query,
-        string normalizedQuery,
-        IEnumerable<Product> products,
-        IReadOnlyCollection<Concept> concepts)
+    public async Task<IReadOnlyCollection<Product>> PrepareProductsAsync(string query, string normalizedQuery, IEnumerable<Product> products, IReadOnlyCollection<Concept> concepts, IReadOnlyCollection<Packaging> packagings)
     {
-        var queryConcept = conceptService.DetectFromText(query, concepts);
+        var results = new List<Product>();
+        var records = new List<ProductSearchRecord>();
+        foreach (var product in products)
+        {
+            var result = await PrepareAsync(normalizedQuery, product, concepts, packagings);
+            ProductSearchRecord productSearch = new()
+            {
+                Name = result.Name,
+                Store = result.Store.Name,
+                Query = normalizedQuery,
+                CanonicalKey = result.CanonicalKey ?? "",
+                CanonicalName = result.CanonicalName ?? "",
+                SearchDate = DateTime.UtcNow
+            };
 
-        return products
-            .Select(product => Prepare(
-                normalizedQuery,
-                product,
-                queryConcept,
-                concepts))
-            .ToArray();
+         //   await productSearchRecordRepository.AddAsync(productSearch);
+            
+            results.Add(result);
+        }
+
+        return results;
     }
 
-    private Product Prepare(
-        string normalizedQuery,
-        Product product,
-        Concept? queryConcept,
-        IReadOnlyCollection<Concept> concepts)
+    private async Task<Product> PrepareAsync(string normalizedQuery, Product product, IReadOnlyCollection<Concept> concepts, IReadOnlyCollection<Packaging> packagings)
     {
+         
         var normalizedName = NormalizerService.Normalize(product.Name);
         var normalizedBrand = NormalizerService.Normalize(product.Brand);
-
         product.Normalized = new Normalized
         {
             Query = normalizedQuery,
@@ -47,83 +55,64 @@ public class ProductService(
         };
 
         // Detectar el concepto propio del producto.
-        var productConcept = conceptService.DetectFromText(
-            product.Name,
-            concepts);
+        var productConcept = conceptService.DetectFromText(product.Name, concepts);
 
-        // Solo utilizar el concepto de la búsqueda como respaldo
-        // cuando no se identifica uno en el nombre del producto.
-        var concept = productConcept ?? queryConcept;
-
-        if (concept is not null)
+        if (productConcept is not null)
         {
-            DetectClasification(product, concept);
+            await DetectClasificationAsync(product, productConcept, packagings);
         }
 
         return canonicalService.GenerateCanonicalKey(product);
     }
 
-    public IReadOnlyCollection<Product> RemoveDuplicates(
-        IEnumerable<Product> products)
+    public IReadOnlyCollection<Product> RemoveDuplicates(IEnumerable<Product> products)
     {
-        return products
-            .DistinctBy(
-                product => product.ProductUrl.AbsoluteUri,
-                StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        return products.DistinctBy(product => product.ProductUrl.AbsoluteUri, StringComparer.OrdinalIgnoreCase).ToArray();
     }
     
-    private static Product DetectClasification(
-        Product product,
-        Concept concept)
+    private async Task<Product> DetectClasificationAsync(Product product, Concept concept, IReadOnlyCollection<Packaging> packagings)
     {
-        var measurement = MeasurementService.Extract(
-            product.Normalized!.Name);
-
-        var subtypes = concept.Subtypes
-            .Select(s => new PriceComparator.Domain.ValueObjects.Subtype
-            {
-                Id = s.Name,
-                Terms = s.Terms
-                    .Select(t => t.Name)
-                    .ToList()
-            })
-            .ToList();
-
-        var subtype = SubTypeService.Extract(
-            product.Normalized.Name,
-            subtypes);
-
+        //Detectar Caracteristicas
+        Packaging? packaging = packagingRepository.Extract(product.Name, packagings);
+        var measurement = MeasurementService.Extract(product.Normalized!.Name);
+        
+        //Detectar Sybtipo
+        var subtypes = concept.Subtypes;
+        Subtype? subtype = subtypeRepository.Extract(product.Normalized.Name, subtypes);
+        
+        if (subtype is null)
+        { 
+            subtype = subtypeRepository.ExtractByName(product, concept, measurement, packaging);
+            //await subtypeRepository.AddAsync(subtype);
+        }
+        
         product.Clasification = new Clasification
         {
-            Id = concept.Id.ToString(),
-            Category = concept.Category?.Name,
-            Subtype = subtype,
-            Measurement = measurement
+            Concept = concept.Name,
+            Category = concept.Category!.Name,
+            SubtypeName = subtype.Name,
+            SubtypeValue = subtype.Value,
+            Measurement = measurement,
+            PackagingName = packaging?.Name,
+            PackagingTermName = packaging?.Terms[0]?.Name
         };
 
         return product;
     }
-
-    public IReadOnlyList<StoreProductTotal> GetTotalProductsByStore(
-        IReadOnlyDictionary<string, IReadOnlyCollection<Product>> stores)
+    
+    public IReadOnlyList<StoreProductTotal> GetTotalProductsByStore(IReadOnlyDictionary<string, IReadOnlyCollection<Product>> stores)
     {
         return stores
-            .Select(store => new StoreProductTotal(
-                TotalProducts: store.Value.Count,
-                Store: store.Key))
+            .Select(store => new StoreProductTotal(TotalProducts: store.Value.Count, Store: store.Key))
             .OrderByDescending(x => x.TotalProducts)
             .ToArray();
     }
 
-    public IReadOnlyList<CanonicalProductTotal> GetTotalCanonicalKeysByStore(
-        IReadOnlyDictionary<string, IReadOnlyCollection<Product>> stores)
+    public IReadOnlyList<CanonicalProductTotal> GetTotalCanonicalKeysByStore(IReadOnlyDictionary<string, IReadOnlyCollection<Product>> stores)
     {
         return stores
-            .Select(store => new CanonicalProductTotal(
-                TotalCanonicalKey: store.Value
-                    .Where(product =>
-                        !string.IsNullOrWhiteSpace(product.CanonicalKey))
+            .Select(store => new CanonicalProductTotal(TotalCanonicalKey: store.Value
+                    .Where(product => !string.IsNullOrWhiteSpace(product.CanonicalKey))
                     .Select(product => product.CanonicalKey!)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Count(),

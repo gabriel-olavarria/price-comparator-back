@@ -9,9 +9,7 @@ namespace PriceComparator.Application.Services;
 
 public class ConceptService : IConceptService, ISingletonDependency
 {
-    public Concept? DetectFromText(
-        string value,
-        IReadOnlyCollection<Concept> concepts)
+    public Concept? DetectFromText(string value, IReadOnlyCollection<Concept> concepts)
     {
         if (string.IsNullOrWhiteSpace(value) || concepts.Count == 0)
         {
@@ -20,14 +18,10 @@ public class ConceptService : IConceptService, ISingletonDependency
 
         var matches = FindMatches(value, concepts);
 
-        return matches.Count > 0
-            ? SelectBestMatch(matches).Concept
-            : null;
+        return matches.Count > 0 ? SelectBestMatch(matches).Concept : null;
     }
 
-    private static List<ConceptMatch> FindMatches(
-        string value,
-        IReadOnlyCollection<Concept> concepts)
+    private static List<ConceptMatch> FindMatches(string value, IReadOnlyCollection<Concept> concepts)
     {
         var matches = new List<ConceptMatch>();
 
@@ -48,12 +42,7 @@ public class ConceptService : IConceptService, ISingletonDependency
                     continue;
                 }
 
-                matches.Add(
-                    new ConceptMatch(
-                        concept,
-                        term,
-                        index,
-                        false));
+                matches.Add(new ConceptMatch(concept, term, index, false));
             }
         }
 

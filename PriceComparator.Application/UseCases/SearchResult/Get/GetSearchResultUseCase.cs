@@ -18,9 +18,7 @@ public sealed class GetSearchResultsUseCase(
         );
 
         // 2. Calcular las métricas con los productos encontrados
-        var metricResponse = getMetricProduct.Execute(
-            new MetricRequest(productResponse.Stores)
-        );
+        var metricResponse = getMetricProduct.Execute(new MetricRequest(productResponse.Stores));
 
         // 3. Devolver búsqueda y métricas
         return new SearchResultsResponse(
