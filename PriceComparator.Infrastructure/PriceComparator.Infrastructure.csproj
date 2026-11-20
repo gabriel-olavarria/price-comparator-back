@@ -32,5 +32,11 @@
         </Content>
         
     </ItemGroup>
+    
+    <ItemGroup>
+      <Reference Include="Microsoft.Extensions.Http">
+        <HintPath>..\..\..\..\..\opt\homebrew\Cellar\dotnet\10.0.302\libexec\shared\Microsoft.AspNetCore.App\10.0.10\Microsoft.Extensions.Http.dll</HintPath>
+      </Reference>
+    </ItemGroup>
 
 </Project>

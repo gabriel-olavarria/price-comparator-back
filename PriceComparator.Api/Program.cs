@@ -3,8 +3,31 @@ using PriceComparator.Api.Diagnostics;
 using PriceComparator.Api.Filters;
 using PriceComparator.Application;
 using PriceComparator.Infrastructure;
+// Habilitar TLS 1.3 mediante Network.framework en macOS.
+if (OperatingSystem.IsMacOS())
+{
+    AppContext.SetSwitch(
+        "System.Net.Security.UseNetworkFramework",
+        true
+    );
+}
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Render: cargar secretos de producción
+const string secretsPath = "/etc/secrets/secrets.json";
+
+if (builder.Environment.IsProduction())
+{
+    if (!File.Exists(secretsPath))
+    {
+        throw new FileNotFoundException("No se encontró el archivo de secretos de Render.", secretsPath);
+    }
+
+    builder.Configuration.AddJsonFile(secretsPath, optional: false, reloadOnChange: false);
+}
+
+builder.Services.AddMemoryCache();
 
 // ======================================================
 // CONTROLLERS Y VALIDACIONES
@@ -37,6 +60,9 @@ builder.Host.UseDefaultServiceProvider((context, options) =>
     options.ValidateScopes = isDevelopment;
     options.ValidateOnBuild = isDevelopment;
 });
+
+builder.Services.AddHttpClient();
+
 // ======================================================
 // APPLICATION PIPELINE - DIAGNÓSTICO
 // ======================================================

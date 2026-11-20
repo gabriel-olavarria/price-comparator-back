@@ -1,4 +1,3 @@
-using PriceComparator.Application.DTOs.Extractions;
 using PriceComparator.Domain.Entities;
 
 namespace PriceComparator.Application.Interfaces.Repositories;

@@ -19,18 +19,14 @@ public static class EntityRegistration
             modelBuilder.Entity(entityType);
         }
 
-        modelBuilder.ApplyConfigurationsFromAssembly(
-            configurationsAssembly);
+        modelBuilder.ApplyConfigurationsFromAssembly(configurationsAssembly);
     }
 
     private static bool InheritsFromEntity(Type type)
     {
-        for (var current = type.BaseType;
-             current is not null;
-             current = current.BaseType)
+        for (var current = type.BaseType; current is not null; current = current.BaseType)
         {
-            if (current.IsGenericType &&
-                current.GetGenericTypeDefinition() == typeof(Entity<>))
+            if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(Entity<>))
             {
                 return true;
             }

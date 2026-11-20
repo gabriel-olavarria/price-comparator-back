@@ -1,7 +1,9 @@
+using System.Text.RegularExpressions;
 using PriceComparator.Application.Interfaces.DependencyInjection;
 using PriceComparator.Application.Interfaces.Services;
 using PriceComparator.Application.Models;
 using PriceComparator.Domain.Entities;
+using PriceComparator.Domain.Enums;
 
 namespace PriceComparator.Application.Services;
 
@@ -9,72 +11,52 @@ public class CanonicalService : ICanonicalService, ISingletonDependency
 {
     public Product GenerateCanonicalKey(Product product)
     {
-        var classification = product.Clasification;
+        var classification = product.Classification;
 
         if (classification is null)
             return product;
 
-        var measurement = classification.Measurement;
+        var pack = GetPack(product);
+        var packaging = GetPackaging(classification.PackagingName, classification.PackagingTermName);
 
-        string canoName = string.Empty;
-        string canKey = string.Empty;
+ 
 
-        if (!string.IsNullOrWhiteSpace(classification.PackagingName))
-        {
-            var packagingName = classification.PackagingName;
-            var packagingTerm = classification.PackagingTermName;
+        var query = product.Normalized?.Query;
+        var brand = product.Normalized?.Brand;
 
-            if (string.Equals(
-                    packagingName,
-                    packagingTerm,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                canoName = $"{packagingTerm} ";
-                canKey = $"{packagingTerm}_";
-            }
-            else
-            {
-                canoName = $"{packagingName} {packagingTerm}".Trim() + " ";
-                canKey = $"{packagingName.ToLowerInvariant()}_{packagingTerm}".TrimEnd('_') + "_";
-            }
-        }
-
-        string? quantity = measurement is null
-            ? string.Empty
-            : measurement.Quantity > 1
-                ? measurement.QuantityUnitValue.ToString()
-                : measurement.DisplayQuantity.ToString();
-
-        string contentKey = !string.IsNullOrWhiteSpace(measurement?.DisplayContentName)
-            ? $"{measurement.DisplayContentName}_{measurement.Quantity}_"
-            : string.Empty;
-
-        string contentName = !string.IsNullOrWhiteSpace(measurement?.DisplayContentName)
-            ? $"{measurement.DisplayContentName} {measurement.Quantity} "
-            : string.Empty;
-
-        product.CanonicalKey =
-            $"{classification.Concept}_" +
-            contentKey +
-            $"{product.Brand?.Replace(" ", "")}_" +
-            canKey +
-            $"{classification.SubtypeValue}_" +
-            $"{quantity}{measurement?.DisplayUnit}";
-
-        product.CanonicalName =
-            $"{classification.Concept} " +
-            contentName +
-            $"{product.Brand} " +
-            canoName +
-            $"{classification.SubtypeName} " +
-            $"{quantity} " +
-            $"{measurement?.DisplayUnit}";
+        var isEqualQuery =
+            !string.IsNullOrWhiteSpace(query) &&
+            !string.IsNullOrWhiteSpace(brand) &&
+            string.Equals(
+                query.Replace(" ", ""),
+                brand.Replace(" ", ""),
+                StringComparison.OrdinalIgnoreCase
+            );
+        
+        string subtype = isEqualQuery ? string.Empty : product.Classification?.SubtypeName ?? string.Empty;
+       
+        product.CanonicalName = BuildCanonicalName(
+            classification.Concept,
+            pack,
+            product.Brand,
+            packaging,
+            classification.Measurement?.DisplayUnit,
+            subtype
+        );
+        
+        product.CanonicalKey = BuildCanonicalKey(
+            classification.Concept,
+            pack,
+            product.Brand,
+            packaging,
+            classification.Measurement?.DisplayCanKey,
+            subtype
+            );
 
         return product;
     }
 
-    public IReadOnlyCollection<CanonicalGroupModel> GroupByCanonicalKey(
-        IReadOnlyDictionary<string, IReadOnlyCollection<Product>> stores)
+    public IReadOnlyCollection<CanonicalGroupModel> GroupByCanonicalKey(IReadOnlyDictionary<string, IReadOnlyCollection<Product>> stores)
     {
         return stores
             .SelectMany(store => store.Value)
@@ -102,8 +84,7 @@ public class CanonicalService : ICanonicalService, ISingletonDependency
             )).ToArray();
     }
 
-    public IReadOnlyCollection<CanonicalGroupModel> Top10CheapestGroup(
-        IReadOnlyCollection<CanonicalGroupModel> cheapestStore)
+    public IReadOnlyCollection<CanonicalGroupModel> Top10CheapestGroup(IReadOnlyCollection<CanonicalGroupModel> cheapestStore)
     {
         return cheapestStore
             .Where(group => group.Products.Count > 0)
@@ -143,5 +124,75 @@ public class CanonicalService : ICanonicalService, ISingletonDependency
                     )).ToArray()))
             .OrderByDescending(store => store.TotalCanonicalEconomic)
             .ToArray();
+    }
+
+    /// <summary>
+    /// Obtiene la descripción del pack según la cantidad de unidades detectadas.
+    /// </summary>
+    /// <param name="product">Producto con su clasificación y medida.</param>
+    /// <returns>Descripción del pack o null si no corresponde.</returns>
+    private static string? GetPack(Product product)
+    {
+        var measurement = product.Classification?.Measurement;
+
+        if (measurement?.Type != UnitType.Units)
+            return null;
+
+        return $"Pack {measurement.Quantity}";
+    }
+    /// <summary>
+    /// Obtiene los tipos de envase, eliminando valores vacíos y duplicados.
+    /// </summary>
+    private static string[] GetPackaging(string? packagingName, string? packagingTermName)
+    {
+        return new[] { packagingName, packagingTermName }
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+    /// <summary>
+    /// Construye el nombre canónico legible del producto.
+    /// </summary>
+    private static string BuildCanonicalName(string? concept, string? pack, string? brand, string[] packaging, string? measurement, string? subtype)
+    {
+        return JoinParts(" ",
+            new[] { concept, pack, brand!.Replace("-", " "), subtype }
+                .Concat(packaging)
+                .Append(measurement)
+        );
+    }
+    /// <summary>
+    /// Construye la clave canónica normalizada del producto.
+    /// </summary>
+    private static string BuildCanonicalKey(string? concept, string? pack, string? brand, string[] packaging, string? measurement, string? subtype)
+    {
+        var brandKey = brand?.Replace(" ", "").Replace("-", "");
+
+        var packKey = pack?.Replace(" ", "_");
+        
+        var subtypeKey = subtype?.Replace(" ", "_");
+
+        var parts = new[] { concept, packKey, subtypeKey }
+            .Concat(packaging)
+            .Select(x => x?.ToLowerInvariant())
+            .Append(measurement);
+
+        return JoinParts("_", parts);
+    }
+    /// <summary>
+    /// Une los componentes mediante un separador, omitiendo valores
+    /// nulos, vacíos o compuestos únicamente por espacios en blanco.
+    /// </summary>
+    /// <param name="separator">Separador entre los componentes.</param>
+    /// <param name="values">Componentes que se unirán.</param>
+    /// <returns>Cadena con los componentes válidos, sin espacios al inicio ni al final de cada uno.</returns>
+    private static string JoinParts(string separator, IEnumerable<string?> values)
+    {
+        return string.Join(
+            separator,
+            values.Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x!.Trim())
+        );
     }
 }

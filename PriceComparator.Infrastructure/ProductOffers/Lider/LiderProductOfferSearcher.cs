@@ -13,11 +13,10 @@ namespace PriceComparator.Infrastructure.ProductOffers.Lider;
 public sealed class LiderProductOfferSearcher(
     LiderGraphQLClient graphqlClient,
     LiderProductParser parser,
-    IExtractedSearcherRepository extractedSearchRepository,
+    IExtractedSearchRepository extractedSearchRepository,
     IProcessedSearchRepository processedSearchRepository,
     ILogger<LiderProductOfferSearcher> logger,
-    IOptions<SupermarketExtractionOptions> options,
-    IUnitOfWork unitOfWork)
+    IOptions<SupermarketExtractionOptions> options)
     : IProductOfferSearcher, ITransientDependency
 {
     public string StoreCode => "Lider";

@@ -7,36 +7,21 @@ using PriceComparator.Infrastructure.Persistence.Contexts;
 
 namespace PriceComparator.Infrastructure.Persistence.Repositories;
 
-public sealed class ConceptRepository : IConceptRepository, IScopedDependency
+public sealed class ConceptRepository(
+    PriceComparatorDbContext context)
+    :  Repository<Concept, long>(context), 
+        IConceptRepository
 {
-    private readonly PriceComparatorDbContext _context;
-    private readonly ILogger<ConceptRepository> _logger;
-
-    public ConceptRepository(
-        PriceComparatorDbContext context,
-        ILogger<ConceptRepository> logger)
+    public async Task<IReadOnlyCollection<Concept>> GetAllConceptsAsync(CancellationToken cancellationToken = default)
     {
-        _context = context;
-        _logger = logger;
-    }
-
-    public async Task<IReadOnlyCollection<Concept>> GetAllAsync(
-        CancellationToken cancellationToken = default)
-    {
-        var concepts = await _context.Set<Concept>()
-            .AsNoTracking()
+        var concepts = await Entities
             .AsSplitQuery()
             .Include(c => c.Category)
-            .Include(c => c.Aliases)
+            .Include(c => c.ConceptTerms)
             .Include(c => c.Subtypes)
             .ThenInclude(s => s.Terms)
             .OrderBy(c => c.Id)
             .ToListAsync(cancellationToken);
-
-        _logger.LogInformation(
-            "Conceptos obtenidos desde Neon: {Count}",
-            concepts.Count);
-
         return concepts;
     }
 }

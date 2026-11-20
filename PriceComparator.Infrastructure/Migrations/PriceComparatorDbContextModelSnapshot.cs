@@ -24,28 +24,6 @@ namespace PriceComparator.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("PriceComparator.Domain.Entities.Aliases", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<long>("ConceptId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ConceptId");
-
-                    b.ToTable("Aliases", "PriceComparator");
-                });
-
             modelBuilder.Entity("PriceComparator.Domain.Entities.Category", b =>
                 {
                     b.Property<long>("Id")
@@ -83,6 +61,28 @@ namespace PriceComparator.Infrastructure.Migrations
                     b.HasIndex("CategoryId");
 
                     b.ToTable("Concept", "PriceComparator");
+                });
+
+            modelBuilder.Entity("PriceComparator.Domain.Entities.ConceptTerm", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ConceptId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConceptId");
+
+                    b.ToTable("ConceptTerm", "PriceComparator");
                 });
 
             modelBuilder.Entity("PriceComparator.Domain.Entities.ExtractedSearch", b =>
@@ -214,6 +214,30 @@ namespace PriceComparator.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("PriceComparator.Domain.Entities.PackagingTermAlias", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<long>("PackagingTermId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PackagingTermId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("PackagingTermAliases", "PriceComparator");
+                });
+
             modelBuilder.Entity("PriceComparator.Domain.Entities.ProcessedSearch", b =>
                 {
                     b.Property<long>("Id")
@@ -286,7 +310,71 @@ namespace PriceComparator.Infrastructure.Migrations
 
                     b.HasIndex("SearchDate");
 
+                    b.HasIndex("Store", "Name", "Query")
+                        .IsUnique();
+
                     b.ToTable("ProductSearchRecord", "PriceComparator");
+                });
+
+            modelBuilder.Entity("PriceComparator.Domain.Entities.Rules", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long?>("ConceptId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("ConceptTermId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Field")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Operator")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long?>("PackagingId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("PackagingTermId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("SubTypeId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("SubTypeTermId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConceptId");
+
+                    b.HasIndex("ConceptTermId");
+
+                    b.HasIndex("PackagingId");
+
+                    b.HasIndex("PackagingTermId");
+
+                    b.HasIndex("SubTypeId");
+
+                    b.HasIndex("SubTypeTermId");
+
+                    b.ToTable("Rules", "PriceComparator");
                 });
 
             modelBuilder.Entity("PriceComparator.Domain.Entities.Subtype", b =>
@@ -314,7 +402,7 @@ namespace PriceComparator.Infrastructure.Migrations
                     b.ToTable("Subtype", "PriceComparator");
                 });
 
-            modelBuilder.Entity("PriceComparator.Domain.Entities.Term", b =>
+            modelBuilder.Entity("PriceComparator.Domain.Entities.SubtypeTerm", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -333,18 +421,7 @@ namespace PriceComparator.Infrastructure.Migrations
 
                     b.HasIndex("SubtypeId");
 
-                    b.ToTable("Term", "PriceComparator");
-                });
-
-            modelBuilder.Entity("PriceComparator.Domain.Entities.Aliases", b =>
-                {
-                    b.HasOne("PriceComparator.Domain.Entities.Concept", "Concept")
-                        .WithMany("Aliases")
-                        .HasForeignKey("ConceptId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Concept");
+                    b.ToTable("SubtypeTerm", "PriceComparator");
                 });
 
             modelBuilder.Entity("PriceComparator.Domain.Entities.Concept", b =>
@@ -354,6 +431,17 @@ namespace PriceComparator.Infrastructure.Migrations
                         .HasForeignKey("CategoryId");
 
                     b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("PriceComparator.Domain.Entities.ConceptTerm", b =>
+                {
+                    b.HasOne("PriceComparator.Domain.Entities.Concept", "Concept")
+                        .WithMany("ConceptTerms")
+                        .HasForeignKey("ConceptId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Concept");
                 });
 
             modelBuilder.Entity("PriceComparator.Domain.Entities.PackagingTerm", b =>
@@ -367,6 +455,56 @@ namespace PriceComparator.Infrastructure.Migrations
                     b.Navigation("Packaging");
                 });
 
+            modelBuilder.Entity("PriceComparator.Domain.Entities.PackagingTermAlias", b =>
+                {
+                    b.HasOne("PriceComparator.Domain.Entities.PackagingTerm", "PackagingTerm")
+                        .WithMany("Aliases")
+                        .HasForeignKey("PackagingTermId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PackagingTerm");
+                });
+
+            modelBuilder.Entity("PriceComparator.Domain.Entities.Rules", b =>
+                {
+                    b.HasOne("PriceComparator.Domain.Entities.Concept", "Concept")
+                        .WithMany("Rules")
+                        .HasForeignKey("ConceptId");
+
+                    b.HasOne("PriceComparator.Domain.Entities.ConceptTerm", "ConceptTerm")
+                        .WithMany("Rules")
+                        .HasForeignKey("ConceptTermId");
+
+                    b.HasOne("PriceComparator.Domain.Entities.Packaging", "Packaging")
+                        .WithMany("Rules")
+                        .HasForeignKey("PackagingId");
+
+                    b.HasOne("PriceComparator.Domain.Entities.PackagingTerm", "PackagingTerm")
+                        .WithMany("Rules")
+                        .HasForeignKey("PackagingTermId");
+
+                    b.HasOne("PriceComparator.Domain.Entities.Subtype", "Subtype")
+                        .WithMany("Rules")
+                        .HasForeignKey("SubTypeId");
+
+                    b.HasOne("PriceComparator.Domain.Entities.SubtypeTerm", "SubTypeTerm")
+                        .WithMany("Rules")
+                        .HasForeignKey("SubTypeTermId");
+
+                    b.Navigation("Concept");
+
+                    b.Navigation("ConceptTerm");
+
+                    b.Navigation("Packaging");
+
+                    b.Navigation("PackagingTerm");
+
+                    b.Navigation("SubTypeTerm");
+
+                    b.Navigation("Subtype");
+                });
+
             modelBuilder.Entity("PriceComparator.Domain.Entities.Subtype", b =>
                 {
                     b.HasOne("PriceComparator.Domain.Entities.Concept", "Concept")
@@ -378,7 +516,7 @@ namespace PriceComparator.Infrastructure.Migrations
                     b.Navigation("Concept");
                 });
 
-            modelBuilder.Entity("PriceComparator.Domain.Entities.Term", b =>
+            modelBuilder.Entity("PriceComparator.Domain.Entities.SubtypeTerm", b =>
                 {
                     b.HasOne("PriceComparator.Domain.Entities.Subtype", "Subtype")
                         .WithMany("Terms")
@@ -396,19 +534,42 @@ namespace PriceComparator.Infrastructure.Migrations
 
             modelBuilder.Entity("PriceComparator.Domain.Entities.Concept", b =>
                 {
-                    b.Navigation("Aliases");
+                    b.Navigation("ConceptTerms");
+
+                    b.Navigation("Rules");
 
                     b.Navigation("Subtypes");
                 });
 
+            modelBuilder.Entity("PriceComparator.Domain.Entities.ConceptTerm", b =>
+                {
+                    b.Navigation("Rules");
+                });
+
             modelBuilder.Entity("PriceComparator.Domain.Entities.Packaging", b =>
                 {
+                    b.Navigation("Rules");
+
                     b.Navigation("Terms");
+                });
+
+            modelBuilder.Entity("PriceComparator.Domain.Entities.PackagingTerm", b =>
+                {
+                    b.Navigation("Aliases");
+
+                    b.Navigation("Rules");
                 });
 
             modelBuilder.Entity("PriceComparator.Domain.Entities.Subtype", b =>
                 {
+                    b.Navigation("Rules");
+
                     b.Navigation("Terms");
+                });
+
+            modelBuilder.Entity("PriceComparator.Domain.Entities.SubtypeTerm", b =>
+                {
+                    b.Navigation("Rules");
                 });
 #pragma warning restore 612, 618
         }

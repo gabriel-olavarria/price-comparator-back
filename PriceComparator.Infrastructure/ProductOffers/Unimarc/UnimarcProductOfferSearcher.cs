@@ -15,7 +15,7 @@ namespace PriceComparator.Infrastructure.ProductOffers.Unimarc;
 
 public sealed class UnimarcProductOfferSearcher(
     UnimarcProductJsonParser parser,
-    IExtractedSearcherRepository extractedSearcherRepository,
+    IExtractedSearchRepository extractedSearchRepository,
     IProcessedSearchRepository processedSearchRepository,
     ILogger<UnimarcProductOfferSearcher> logger,
     IOptions<SupermarketExtractionOptions> options)
@@ -116,15 +116,13 @@ public sealed class UnimarcProductOfferSearcher(
 
         // 4. Transformar la respuesta al modelo Product.
         var products = parser.Parse(json);
-
         logger.LogInformation("[UNIMARC] {Count} productos obtenidos. Query: {Query}", products.Count, query);
-
         return products;
     }
 
     public async Task SaveExtracted(string rawJson, string normalizedQuery, CancellationToken cancellationToken)
     {
-        await extractedSearcherRepository.SaveExtractedAsync(StoreCode, normalizedQuery, rawJson, cancellationToken);
+        await extractedSearchRepository.SaveExtractedAsync(StoreCode, normalizedQuery, rawJson, cancellationToken);
     }
 
     public async Task SaveProcessed(IReadOnlyCollection<Product> products, string query, CancellationToken cancellationToken = default)

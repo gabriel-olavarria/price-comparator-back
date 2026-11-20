@@ -28,7 +28,8 @@ public sealed class PackagingTermConfiguration : IEntityTypeConfiguration<Packag
             new PackagingTerm { Id = 3, Name = "botella", PackagingId = 2 },
             new PackagingTerm { Id = 4, Name = "botellas", PackagingId = 2 },
             new PackagingTerm { Id = 5, Name = "desechable", PackagingId = 2 },
-            new PackagingTerm { Id = 6, Name = "vidrio", PackagingId = 2 }
+            new PackagingTerm { Id = 6, Name = "vidrio", PackagingId = 2 },
+            new PackagingTerm { Id = 7, Name = "retornable", PackagingId = 2 }
         );
     }
 }

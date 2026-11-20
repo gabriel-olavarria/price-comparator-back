@@ -10,7 +10,9 @@ public sealed class Concept : Entity<long>
 
     public Category? Category { get; set; }
 
-    public List<Aliases> Aliases { get; set; } = [];
+    public List<ConceptTerm> ConceptTerms { get; set; } = [];
 
     public List<Subtype> Subtypes { get; set; } = [];
+    
+    public List<Rules> Rules { get; set; } = [];
 }

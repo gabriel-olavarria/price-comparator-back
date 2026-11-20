@@ -14,7 +14,7 @@ namespace PriceComparator.Infrastructure.ProductOffers.Jumbo;
 public sealed class JumboProductOfferSearcher(
     HttpClient httpClient,
     JumboProductParser parser,
-    IExtractedSearcherRepository extractedSearchRepository,
+    IExtractedSearchRepository extractedSearchRepository,
     IProcessedSearchRepository processedSearchRepository,
     ILogger<JumboProductOfferSearcher> logger,
     IOptions<SupermarketExtractionOptions> options)
@@ -51,8 +51,10 @@ public sealed class JumboProductOfferSearcher(
         await SaveExtracted(rawJson, normalizedQuery, cancellationToken);
        
         var offers = await parser.ParseAsync(html, cancellationToken);
- 
+  
         Console.WriteLine($"[JUMBO] Productos encontrados: {offers.Count}");
+       
+ 
         return (offers, false);
     }
     private async Task<string> SearchLiveAsync(string query, CancellationToken cancellationToken)

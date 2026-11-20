@@ -78,7 +78,8 @@ public sealed class UnimarcProductJsonParser : ITransientDependency
                 brand: brand,
                 sellerName: null,
                 categoriesStore: categories,
-                availability: availability
+                availability: availability,
+                slug: slug
             );
             /*product.Clasification = new Clasification
             {

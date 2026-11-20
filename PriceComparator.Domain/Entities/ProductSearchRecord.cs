@@ -10,4 +10,5 @@ public sealed class ProductSearchRecord : Entity<long>
     public string CanonicalKey { get; set; } = string.Empty;
     public string CanonicalName { get; set; } = string.Empty;
     public DateTime SearchDate { get; set; }
+    
 }

@@ -2,7 +2,7 @@ using PriceComparator.Domain.Enums;
 
 namespace PriceComparator.Domain.ValueObjects;
 
-public sealed record Clasification
+public sealed record Classification
 {
     public string Category { get; set; } = string.Empty;
     public string Concept { get; set; } = string.Empty;

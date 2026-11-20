@@ -1,13 +1,12 @@
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using AngleSharp.Html.Parser;
 using PriceComparator.Application.Interfaces.DependencyInjection;
 using PriceComparator.Domain.Entities;
 using PriceComparator.Domain.ValueObjects;
 using System.Net;
-using System.Text.RegularExpressions;
+
 
 namespace PriceComparator.Infrastructure.ProductOffers.Acuenta;
 
@@ -34,20 +33,16 @@ public sealed class AcuentaProductParser : ISingletonDependency
                 continue;
 
             var brand = TryString(value, "brand", out var b) ? b : null;
-            var description = TryString(value, "description", out var d)
-                ? d
-                : null;
+            var slug = TryString(value, "slug", out var s) ? s : null;
+            var description = TryString(value, "description", out var d) ? d : null;
 
             var productName = GetProductName(name, description);
-            
             var images = ResolveStrings(value, "photosUrl", records);
             var imageUrl = images.Select(ToHttpUri).FirstOrDefault(uri => uri is not null);
-            var available = value.TryGetProperty("isAvailable", out var availableElement) &&
-                            availableElement.ValueKind == JsonValueKind.True;
+            var available = value.TryGetProperty("isAvailable", out var availableElement) && availableElement.ValueKind == JsonValueKind.True;
 
             // URL de búsqueda provisional: el slug no confirma por sí solo la ruta pública.
-            var productUrl = new Uri(BaseUri,
-                $"search?name={Uri.EscapeDataString(sku)}&currentPage=1");
+            var productUrl = new Uri(BaseUri, $"search?name={Uri.EscapeDataString(sku)}&currentPage=1");
 
             products[sku] = new Product(
                 name: productName,
@@ -58,7 +53,8 @@ public sealed class AcuentaProductParser : ISingletonDependency
                 brand: brand,
                 sellerName: "aCuenta",
                 categoriesStore: [],
-                availability: available ? "IN_STOCK" : "OUT_OF_STOCK");
+                availability: available ? "IN_STOCK" : "OUT_OF_STOCK",
+                slug: slug);
         }
 
         return products.Values.ToArray();

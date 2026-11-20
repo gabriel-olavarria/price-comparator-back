@@ -1,29 +1,52 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using PriceComparator.Application.Interfaces.Repositories;
 using PriceComparator.Domain.Entities;
 using PriceComparator.Infrastructure.Persistence.Contexts;
 
 namespace PriceComparator.Infrastructure.Persistence.Repositories;
 
-public sealed class PackagingRepository(PriceComparatorDbContext context)
-    : Repository<Packaging, long>(context), IPackagingRepository
+public sealed class PackagingRepository(
+    PriceComparatorDbContext context)
+    : Repository<Packaging, long>(context), 
+        IPackagingRepository
 {
     public async Task<List<Packaging>> GetAllWithTermsAsync(CancellationToken cancellationToken = default)
     {
-        return await context.Set<Packaging>()
+        return await Entities
             .AsNoTracking()
             .Include(x => x.Terms)
+            .ThenInclude(t => t.Aliases)
             .ToListAsync(cancellationToken);
     }
     
-    public Packaging? Extract(string name, IReadOnlyCollection<Packaging> packagings)
+    public Packaging? Extract(string name, IReadOnlyCollection<Packaging> packagings, string? slug)
     {
+        var normalizedName = Normalize(name);
+        var normalizedSlug = Normalize(slug ?? string.Empty);
+        
         foreach (var packaging in packagings)
         {
-            var term = packaging.Terms.FirstOrDefault(term =>
-                !string.IsNullOrWhiteSpace(term.Name) &&
-                Regex.IsMatch(name, $@"(?<!\w){Regex.Escape(term.Name)}(?!\w)", RegexOptions.IgnoreCase));
+            var term = packaging.Terms
+                .SelectMany(t => new[] { t.Name }
+                    .Concat(t.Aliases.Select(a => a.Name))
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Select(value => new
+                    {
+                        Term = t,
+                        Value = Normalize(value)
+                    }))
+                .Where(x =>
+                {
+                    var pattern = $@"(?<!\w){Regex.Escape(x.Value)}(?!\w)";
 
+                    return Regex.IsMatch(normalizedName, pattern, RegexOptions.IgnoreCase) ||
+                           Regex.IsMatch(normalizedSlug, pattern, RegexOptions.IgnoreCase);
+                })
+                .OrderByDescending(x => x.Value.Length)
+                .Select(x => x.Term)
+                .FirstOrDefault();
+            
             if (term is null)
                 continue;
             
@@ -36,6 +59,14 @@ public sealed class PackagingRepository(PriceComparatorDbContext context)
         }
 
         return null;
+    }
+    
+    private static string Normalize(string value)
+    {
+        return Regex.Replace(
+            value.Replace("-", " ").Replace("/", " ").Trim(),
+            @"\s+",
+            " ");
     }
 
 }

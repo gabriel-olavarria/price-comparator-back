@@ -1,6 +1,5 @@
 using PriceComparator.Application.Models;
 using PriceComparator.Domain.Entities;
-using PriceComparator.Domain.ValueObjects;
 
 namespace PriceComparator.Application.Interfaces.Services;
 

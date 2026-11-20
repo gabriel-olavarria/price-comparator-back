@@ -4,8 +4,6 @@ using PriceComparator.Application.Interfaces.Services;
 using PriceComparator.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PriceComparator.Application.DTOs.Extractions;
-using PriceComparator.Application.Interfaces.Persistence;
 using PriceComparator.Application.Interfaces.Repositories;
 using PriceComparator.Infrastructure.Persistence.Configurations;
 
@@ -17,7 +15,7 @@ public sealed class TottusProductOfferSearcher(
     TottusCategoryParser categoryParser,
     TottusCategoryResolver categoryResolver,
     ILogger<TottusProductOfferSearcher> logger,
-    IExtractedSearcherRepository extractedSearchRepository,
+    IExtractedSearchRepository extractedSearchRepository,
     IProcessedSearchRepository processedSearchRepository,
     IOptions<SupermarketExtractionOptions> options)
     : IProductOfferSearcher, ITransientDependency

@@ -27,8 +27,8 @@ public class ConceptService : IConceptService, ISingletonDependency
 
         foreach (var concept in concepts)
         {
-            var terms = concept.Aliases
-                .Select(alias => alias.Name)
+            var terms = concept.ConceptTerms
+                .Select(term => term.Name)
                 .Append(concept.Name)
                 .Where(term => !string.IsNullOrWhiteSpace(term))
                 .Distinct(StringComparer.OrdinalIgnoreCase);
@@ -49,13 +49,11 @@ public class ConceptService : IConceptService, ISingletonDependency
         return matches;
     }
 
-    private static ConceptMatch SelectBestMatch(
-        IEnumerable<ConceptMatch> matches)
+    private static ConceptMatch SelectBestMatch(IEnumerable<ConceptMatch> matches)
     {
         return matches
             .OrderBy(match => match.Index)
-            .ThenByDescending(match =>
-                NormalizerService.Normalize(match.Term).Length)
+            .ThenByDescending(match => NormalizerService.Normalize(match.Term).Length)
             .ThenBy(match => match.Concept.Id)
             .First();
     }

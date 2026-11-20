@@ -15,21 +15,20 @@ public sealed class ProcessedSearchRepository(
     : Repository<ProcessedSearch, long>(context), 
         IProcessedSearchRepository
 {
-    private static readonly TimeZoneInfo ChileTimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/Santiago");
 
     public async Task<ProcessedSearch?> FindTodayAsync(string store, string query, CancellationToken cancellationToken = default)
     {
         var normalizedStore = store.Trim();
         var normalizedQuery = query.Trim();
         
-        var entity = await context.Set<ProcessedSearch>()
+        var entity = await Entities
             .Where(x =>
                 x.Store == normalizedStore &&
                 x.SearchQuery == normalizedQuery)
             .OrderByDescending(x => x.GeneratedAt)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (entity is null || entity.Products.Count == 0)
+        if (entity is null)
             return null;
 
         return entity;
@@ -39,7 +38,8 @@ public sealed class ProcessedSearchRepository(
         var normalizedQuery = query.Trim();
 
         var processed = await FindTodayAsync(store, normalizedQuery, cancellationToken);
-
+        
+        
         if (processed is null)
         {
             processed = new ProcessedSearch

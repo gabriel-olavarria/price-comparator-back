@@ -1,10 +1,8 @@
-
 using PriceComparator.Application.Interfaces.DependencyInjection;
-using PriceComparator.Application.Interfaces.Persistence;
 using PriceComparator.Application.Interfaces.Repositories;
 using PriceComparator.Application.Interfaces.Services;
 using PriceComparator.Domain.Entities;
-using PriceComparator.Domain.Services;
+
 
 
 namespace PriceComparator.Application.UseCases.SearchProduct.Get;
@@ -14,7 +12,6 @@ public sealed class GetSearchProductUseCase(
     IConceptRepository conceptRepository,
     IRankedService rankedService,
     IProductService productService,
-    IUnitOfWork unitOfWork,
     IPackagingRepository  packagingRepository)
     : IScopedDependency
 {
@@ -22,9 +19,8 @@ public sealed class GetSearchProductUseCase(
 
     public async Task<SearchResponse> ExecuteAsync(ProductRequest request, CancellationToken cancellationToken = default)
     {
-        var query = request.Query?.Trim();
-        var normalizedQuery = NormalizerService.Normalize(query);
-        var concepts = await conceptRepository.GetAllAsync(cancellationToken);
+        var queryTrim = request.Query.Trim();
+        var concepts = await conceptRepository.GetAllConceptsAsync(cancellationToken);
         var packagings = await packagingRepository.GetAllWithTermsAsync(cancellationToken);
         var productsByStore = new Dictionary<string, IReadOnlyCollection<Product>>(StringComparer.OrdinalIgnoreCase);
 
@@ -32,29 +28,33 @@ public sealed class GetSearchProductUseCase(
         {
             try
             {
-  
                 // 1. Obtener ofertas desde el supermercado.
-                var (offers, fromCache) = await searcher.SearchAsync(query!, cancellationToken);
+                var (offers, fromCache) = await searcher.SearchAsync(queryTrim, cancellationToken);
 
                 // Si ya están procesados, devolver directamente.
                 if (fromCache)
                 {
                     productsByStore[searcher.StoreCode] = offers;
+                    Console.WriteLine($"[{searcher.StoreCode}] Se devuelve productos procesados.");
+
                     continue;
                 }
                 
                 // 2. Eliminar ofertas duplicadas.
                 var uniqueOffers = productService.RemoveDuplicates(offers);
-                var products = await productService.PrepareProductsAsync(query!, normalizedQuery, uniqueOffers, concepts, packagings);
+               
+                // 3. Preparación de productos
+                var products =  productService.PrepareProducts(queryTrim, uniqueOffers, concepts, packagings);
                 
-         
-                // 3. Calcular la relevancia de los productos.
-                products = rankedService.Rank(query!, products);
+                // 4. Calcular la relevancia de los productos.
+                products = rankedService.Rank(queryTrim, products);
                 
-                // 4. Guardar los productos por supermercado.
-                await searcher.SaveProcessed(products, query!, cancellationToken);
+                // 5. Guardar los productos por supermercado.
+                await searcher.SaveProcessed(products, queryTrim, cancellationToken);
                 
                 productsByStore[searcher.StoreCode] = products.OrderBy(p => p.Price).ToList();
+                Console.WriteLine($"Finalizó {searcher.StoreCode}");
+
             }
             catch (OperationCanceledException)when (cancellationToken.IsCancellationRequested)
             {
@@ -62,16 +62,14 @@ public sealed class GetSearchProductUseCase(
             }
             catch (Exception exception)
             {
-                Console.WriteLine(
-                    $"Error ejecutando {searcher.StoreCode}: {exception}");
-
+                Console.WriteLine($"Error ejecutando {searcher.StoreCode}: {exception}");
                 productsByStore[searcher.StoreCode] = [];
             }
         }
 
         var totalResults = productsByStore.Values.Sum(products => products.Count);
  
-        return new SearchResponse(Query: query!, TotalResults: totalResults, Stores: productsByStore);
+        return new SearchResponse(Query: queryTrim, TotalResults: totalResults, Stores: productsByStore);
     }
     
 }

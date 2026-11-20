@@ -13,7 +13,7 @@ namespace PriceComparator.Infrastructure.ProductOffers.Acuenta;
 public sealed class AcuentaProductOfferSearcher(
     HttpClient httpClient,
     AcuentaProductParser parser,
-    IExtractedSearcherRepository extractedSearchRepository,
+    IExtractedSearchRepository extractedSearchRepository,
     IProcessedSearchRepository processedSearchRepository,
     ILogger<AcuentaProductOfferSearcher> logger,
     IOptions<SupermarketExtractionOptions> options)

@@ -12,8 +12,7 @@ namespace PriceComparator.Infrastructure.ProductOffers.Tottus;
 
 public sealed class TottusProductParser : ISingletonDependency
 {
-    public async Task<IReadOnlyCollection<Product>> ParseAsync(string html,
-        CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyCollection<Product>> ParseAsync(string html, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(html))
         {
@@ -118,6 +117,14 @@ public sealed class TottusProductParser : ISingletonDependency
             return null;
         }
 
+        var segments = productUrl.AbsolutePath
+            .Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        var slug = segments.Length >= 4 &&
+                   segments[^2].All(char.IsDigit)
+            ? Uri.UnescapeDataString(segments[^1])
+            : null;
+        
         Uri? imageUrl = null;
 
         if (TryGetString(product, "image", out var imageUrlText))
@@ -148,7 +155,8 @@ public sealed class TottusProductParser : ISingletonDependency
             brand: brand,
             sellerName: "Tottus",
             categoriesStore: [],
-            availability: null);
+            availability: null,
+            slug);
     }
 
     private static bool TryGetPrice(JsonElement product, out decimal price)

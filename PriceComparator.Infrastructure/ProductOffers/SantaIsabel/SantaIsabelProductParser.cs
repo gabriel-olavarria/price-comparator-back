@@ -16,9 +16,7 @@ public sealed class SantaIsabelProductParser : ISingletonDependency
     private static readonly Uri SantaIsabelBaseUri =
         new("https://www.santaisabel.cl");
 
-    public async Task<IReadOnlyCollection<Product>> ParseAsync(
-        string html,
-        CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyCollection<Product>> ParseAsync(string html, CancellationToken cancellationToken = default)
     {
         var rawJson = await ExtractRawJsonAsync(
             html,
@@ -27,9 +25,7 @@ public sealed class SantaIsabelProductParser : ISingletonDependency
         return ParseRawProducts(rawJson);
     }
 
-    public async Task<string> ExtractRawJsonAsync(
-        string html,
-        CancellationToken cancellationToken = default)
+    public async Task<string> ExtractRawJsonAsync(string html, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(html))
             return "[]";
@@ -44,8 +40,7 @@ public sealed class SantaIsabelProductParser : ISingletonDependency
         var categoriesById = GetCategoriesByProductId(document);
 
         var products = new JsonArray();
-        var productIds = new HashSet<string>(
-            StringComparer.OrdinalIgnoreCase);
+        var productIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var scripts = document.QuerySelectorAll("script")
             .Where(script => script.TextContent.Contains(
@@ -62,17 +57,11 @@ public sealed class SantaIsabelProductParser : ISingletonDependency
 
             var position = 0;
 
-            while ((position = scriptContent.IndexOf(
-                       marker,
-                       position,
-                       StringComparison.Ordinal)) >= 0)
+            while ((position = scriptContent.IndexOf(marker, position, StringComparison.Ordinal)) >= 0)
             {
                 var start = position + marker.Length;
 
-                if (!TryReadJsonValue(
-                        scriptContent.AsSpan(start),
-                        out var pushDocument,
-                        out var consumed))
+                if (!TryReadJsonValue(scriptContent.AsSpan(start), out var pushDocument, out var consumed))
                 {
                     position = start;
                     continue;
@@ -107,8 +96,7 @@ public sealed class SantaIsabelProductParser : ISingletonDependency
             }
         }
 
-        Console.WriteLine(
-            $"[SANTA ISABEL][RAW] Productos extraídos: {products.Count}");
+        Console.WriteLine($"[SANTA ISABEL][RAW] Productos extraídos: {products.Count}");
 
         return products.ToJsonString(
             new JsonSerializerOptions
@@ -117,10 +105,7 @@ public sealed class SantaIsabelProductParser : ISingletonDependency
             });
     }
 
-    private static void ExtractProductsFromPayload(
-        string payload,
-        JsonArray products,
-        HashSet<string> productIds,
+    private static void ExtractProductsFromPayload(string payload, JsonArray products, HashSet<string> productIds,
         IReadOnlyDictionary<string, IReadOnlyCollection<string>> categoriesByUrl,
         IReadOnlyDictionary<string, IReadOnlyCollection<string>> categoriesById,
         CancellationToken cancellationToken)
@@ -129,20 +114,13 @@ public sealed class SantaIsabelProductParser : ISingletonDependency
 
         var searchPosition = 0;
 
-        while ((searchPosition = payload.IndexOf(
-                   productMarker,
-                   searchPosition,
-                   StringComparison.Ordinal)) >= 0)
+        while ((searchPosition = payload.IndexOf(productMarker, searchPosition, StringComparison.Ordinal)) >= 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var objectStart =
-                searchPosition + "\"product\":".Length;
+            var objectStart = searchPosition + "\"product\":".Length;
 
-            if (!TryReadJsonValue(
-                    payload.AsSpan(objectStart),
-                    out var productDocument,
-                    out var productLength))
+            if (!TryReadJsonValue(payload.AsSpan(objectStart), out var productDocument, out var productLength))
             {
                 searchPosition = objectStart + 1;
                 continue;
@@ -175,43 +153,29 @@ public sealed class SantaIsabelProductParser : ISingletonDependency
                 // 1. Intentar encontrar categorías por URL.
                 if (TryGetString(product, "slug", out var slug))
                 {
-                    var path = NormalizeProductPath(
-                        $"/{slug}/p");
+                    var path = NormalizeProductPath($"/{slug}/p");
 
-                    categoriesByUrl.TryGetValue(
-                        path,
-                        out categories);
+                    categoriesByUrl.TryGetValue(path, out categories);
                 }
 
                 // 2. Intentar por productId.
                 if (categories is null)
                 {
-                    categoriesById.TryGetValue(
-                        productId,
-                        out categories);
+                    categoriesById.TryGetValue(productId, out categories);
                 }
 
                 // 3. Intentar por referencia comercial.
-                if (categories is null &&
-                    TryGetString(
-                        product,
-                        "reference",
-                        out var reference))
+                if (categories is null && TryGetString(product, "reference", out var reference))
                 {
-                    categoriesById.TryGetValue(
-                        reference,
-                        out categories);
+                    categoriesById.TryGetValue(reference, out categories);
                 }
 
                 // 4. Conservar categoryNames original
                 // y agregar las categorías resueltas.
                 if (categories is { Count: > 0 })
                 {
-                    productNode["resolvedCategoryNames"] =
-                        new JsonArray(
-                            categories.Select(category =>
-                                (JsonNode?)JsonValue.Create(category))
-                                .ToArray());
+                    productNode["resolvedCategoryNames"] = new JsonArray(
+                            categories.Select(category => (JsonNode?)JsonValue.Create(category)).ToArray());
                 }
 
                 products.Add(productNode);
@@ -219,15 +183,11 @@ public sealed class SantaIsabelProductParser : ISingletonDependency
         }
     }
 
-    private static IReadOnlyDictionary<string, IReadOnlyCollection<string>>
-        GetCategoriesByProductUrl(IDocument document)
+    private static IReadOnlyDictionary<string, IReadOnlyCollection<string>> GetCategoriesByProductUrl(IDocument document)
     {
-        var result =
-            new Dictionary<string, IReadOnlyCollection<string>>(
-                StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase);
 
-        var productLinks = document.QuerySelectorAll(
-            "a[data-gtm-product-click][href]");
+        var productLinks = document.QuerySelectorAll("a[data-gtm-product-click][href]");
 
         foreach (var link in productLinks)
         {
@@ -395,24 +355,19 @@ public sealed class SantaIsabelProductParser : ISingletonDependency
 
         var categories = GetCategories(product);
 
-        var productUrl = new Uri(
-            SantaIsabelBaseUri,
-            $"/{slug.Trim('/')}/p");
+        var productUrl = new Uri(SantaIsabelBaseUri, $"/{slug.Trim('/')}/p");
 
         foreach (var item in items.EnumerateArray())
         {
             if (item.ValueKind != JsonValueKind.Object)
                 continue;
 
-            if (!TryGetString(item, "name", out var name) &&
-                !TryGetString(product, "productName", out name) &&
-                !TryGetString(product, "name", out name))
+            if (!TryGetString(item, "name", out var name) && !TryGetString(product, "productName", out name) && !TryGetString(product, "name", out name))
             {
                 continue;
             }
 
-            if (!TryGetDecimal(item, "price", out var price) ||
-                price <= 0)
+            if (!TryGetDecimal(item, "price", out var price) || price <= 0)
             {
                 continue;
             }
@@ -430,21 +385,19 @@ public sealed class SantaIsabelProductParser : ISingletonDependency
                 },
                 productUrl: productUrl,
                 imageUrl: imageUrl,
-                brand: string.IsNullOrWhiteSpace(brand)
-                    ? null
-                    : brand,
+                brand: string.IsNullOrWhiteSpace(brand) ? null : brand,
                 sellerName: string.IsNullOrWhiteSpace(sellerName)
                     ? "Santa Isabel"
                     : sellerName,
                 categoriesStore: categories,
-                availability: availability);
+                availability: availability,
+                slug : slug);
         }
 
         return null;
     }
 
-    private static IReadOnlyCollection<string> GetCategories(
-        JsonElement product)
+    private static IReadOnlyCollection<string> GetCategories(JsonElement product)
     {
         // Prioridad: categorías legibles obtenidas del HTML.
         if (product.TryGetProperty(

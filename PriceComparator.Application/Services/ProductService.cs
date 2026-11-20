@@ -13,80 +13,97 @@ public class ProductService(
     IConceptService conceptService,
     CanonicalService canonicalService,
     ISubTypeRepository subtypeRepository,
-    IProductSearchRecordRepository  productSearchRecordRepository,
     IPackagingRepository  packagingRepository
 ) : IProductService, IScopedDependency
 {
-    public async Task<IReadOnlyCollection<Product>> PrepareProductsAsync(string query, string normalizedQuery, IEnumerable<Product> products, IReadOnlyCollection<Concept> concepts, IReadOnlyCollection<Packaging> packagings)
+    public IReadOnlyCollection<Product> PrepareProducts(string queryTrim, IEnumerable<Product> products, IReadOnlyCollection<Concept> concepts, IReadOnlyCollection<Packaging> packagings)
     {
         var results = new List<Product>();
-        var records = new List<ProductSearchRecord>();
         foreach (var product in products)
         {
-            var result = await PrepareAsync(normalizedQuery, product, concepts, packagings);
-            ProductSearchRecord productSearch = new()
-            {
-                Name = result.Name,
-                Store = result.Store.Name,
-                Query = normalizedQuery,
-                CanonicalKey = result.CanonicalKey ?? "",
-                CanonicalName = result.CanonicalName ?? "",
-                SearchDate = DateTime.UtcNow
-            };
+            var result =  PrepareAsync(
+                queryTrim,
+                product,
+                concepts,
+                packagings
+            );
 
-         //   await productSearchRecordRepository.AddAsync(productSearch);
-            
+            if (result is null)
+                continue;
+
             results.Add(result);
         }
 
         return results;
     }
 
-    private async Task<Product> PrepareAsync(string normalizedQuery, Product product, IReadOnlyCollection<Concept> concepts, IReadOnlyCollection<Packaging> packagings)
+    private Product PrepareAsync(string queryTrim, Product product, IReadOnlyCollection<Concept> concepts, IReadOnlyCollection<Packaging> packagings)
     {
-         
+        Product productTrasnform = product;
+        
+        // 1. Detectar el concepto propio del producto.
+        Concept? concept = conceptService.DetectFromText(productTrasnform.Name, concepts);
+
+        //Validacion si no existe concepto en el producto
+        if (concept is null)
+         return productTrasnform;
+        
+        //Validacion para que el nombre comience con el valor del concepto
+        if (!product.Name.TrimStart().StartsWith(concept.Name.Trim(), StringComparison.OrdinalIgnoreCase))
+            return productTrasnform;
+
+        // Validar la palabra inmediatamente después del concepto
+        var remaining = product.Name[concept.Name.Length..].TrimStart();
+        if (remaining.Equals("con", StringComparison.OrdinalIgnoreCase) ||
+            remaining.Equals("y", StringComparison.OrdinalIgnoreCase) ||
+            remaining.StartsWith("con ", StringComparison.OrdinalIgnoreCase) ||
+            remaining.StartsWith("y ", StringComparison.OrdinalIgnoreCase))
+        {
+            return productTrasnform;
+        }
+
+        // 2. Normalizacion
+        productTrasnform = NormalizeProduct(queryTrim, concept, productTrasnform);
+        
+        // 3. Clasificacion 
+        productTrasnform = DetectClassificationAsync(productTrasnform, concept, packagings);
+        
+        // 4. Canonizacion 
+        productTrasnform = canonicalService.GenerateCanonicalKey(productTrasnform);
+        
+ 
+        return productTrasnform;
+    }
+
+    private Product NormalizeProduct(string queryTrim, Concept concept,  Product product)
+    {
         var normalizedName = NormalizerService.Normalize(product.Name);
         var normalizedBrand = NormalizerService.Normalize(product.Brand);
+        
         product.Normalized = new Normalized
         {
-            Query = normalizedQuery,
+            Query = queryTrim,
             Name = normalizedName,
-            Brand = normalizedBrand
+            Brand = normalizedBrand,
         };
 
-        // Detectar el concepto propio del producto.
-        var productConcept = conceptService.DetectFromText(product.Name, concepts);
-
-        if (productConcept is not null)
-        {
-            await DetectClasificationAsync(product, productConcept, packagings);
-        }
-
-        return canonicalService.GenerateCanonicalKey(product);
+        return product;
     }
 
-    public IReadOnlyCollection<Product> RemoveDuplicates(IEnumerable<Product> products)
+    private Product DetectClassificationAsync(Product product, Concept concept, IReadOnlyCollection<Packaging> packagings)
     {
-        return products.DistinctBy(product => product.ProductUrl.AbsoluteUri, StringComparer.OrdinalIgnoreCase).ToArray();
-    }
-    
-    private async Task<Product> DetectClasificationAsync(Product product, Concept concept, IReadOnlyCollection<Packaging> packagings)
-    {
+        var subtypes = concept.Subtypes;
+        
         //Detectar Caracteristicas
-        Packaging? packaging = packagingRepository.Extract(product.Name, packagings);
-        var measurement = MeasurementService.Extract(product.Normalized!.Name);
+        Packaging? packaging = packagingRepository.Extract(product.Name, packagings, product.Slug);
+        
+        //Detectar Medidas
+        Measurement? measurement = MeasurementService.Extract(product.Name);
         
         //Detectar Sybtipo
-        var subtypes = concept.Subtypes;
-        Subtype? subtype = subtypeRepository.Extract(product.Normalized.Name, subtypes);
+        Subtype subtype = subtypeRepository.Extract(product, subtypes, concept, measurement, packaging);
         
-        if (subtype is null)
-        { 
-            subtype = subtypeRepository.ExtractByName(product, concept, measurement, packaging);
-            //await subtypeRepository.AddAsync(subtype);
-        }
-        
-        product.Clasification = new Clasification
+        product.Classification = new Classification
         {
             Concept = concept.Name,
             Category = concept.Category!.Name,
@@ -94,10 +111,15 @@ public class ProductService(
             SubtypeValue = subtype.Value,
             Measurement = measurement,
             PackagingName = packaging?.Name,
-            PackagingTermName = packaging?.Terms[0]?.Name
+            PackagingTermName = packaging?.Terms[0].Name
         };
 
         return product;
+    }
+    
+    public IReadOnlyCollection<Product> RemoveDuplicates(IEnumerable<Product> products)
+    {
+        return products.DistinctBy(product => product.ProductUrl.AbsoluteUri, StringComparer.OrdinalIgnoreCase).ToArray();
     }
     
     public IReadOnlyList<StoreProductTotal> GetTotalProductsByStore(IReadOnlyDictionary<string, IReadOnlyCollection<Product>> stores)

@@ -11,5 +11,7 @@ public sealed class Subtype : Entity<long>
     public Concept Concept { get; set; } = null!;
     
     public string? Value { get; set; } = string.Empty;
-    public List<Term> Terms { get; set; } = [];
+    public List<SubtypeTerm> Terms { get; set; } = [];
+    
+    public List<Rules> Rules { get; set; } = [];
 }

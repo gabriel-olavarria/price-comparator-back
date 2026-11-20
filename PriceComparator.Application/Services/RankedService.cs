@@ -27,9 +27,12 @@ public sealed class RankedService : IRankedService, ITransientDependency
 
         var reasons = new List<string>();
         double score = 0;
+        var normalizedName = product.Normalized?.Name ?? "";
+        var normalizedQuery = product.Normalized?.Query ?? NormalizerService.Normalize(query);
+        var normalizedBrand = product.Normalized?.Brand ?? "";
 
         // 1. NOMBRE EXACTO
-        var exactName = product.Normalized!.Name.Equals(product.Normalized.Query, StringComparison.Ordinal);
+        var exactName = !string.IsNullOrWhiteSpace(normalizedName) && normalizedName.Equals(normalizedQuery, StringComparison.Ordinal);
         if (exactName)
         {
             score += 1000;
@@ -37,7 +40,7 @@ public sealed class RankedService : IRankedService, ITransientDependency
         }
 
         // 2. COMIENZA CON LA CONSULTA
-        var startsWithQuery = !exactName && product.Normalized.Name.StartsWith(product.Normalized.Query + " ", StringComparison.Ordinal);
+        var startsWithQuery = !exactName && !string.IsNullOrWhiteSpace(normalizedQuery) && normalizedName.StartsWith(normalizedQuery + " ", StringComparison.Ordinal);
         if (startsWithQuery)
         {
             score += 500;
@@ -45,37 +48,30 @@ public sealed class RankedService : IRankedService, ITransientDependency
         }
 
         // 3. CONTIENE LA CONSULTA
-        var containsQuery = NormalizerService.ContainsTerm(product.Normalized.Name, product.Normalized.Query);
+        var containsQuery = !string.IsNullOrWhiteSpace(normalizedQuery) && NormalizerService.ContainsTerm(normalizedName, normalizedQuery);
         if (containsQuery)
         {
             score += 200;
             reasons.Add("El nombre contiene la búsqueda: +200");
         }
-
-        // 4 Y 5. CONCEPTO DEL PRODUCTO
-        if (product.Clasification?.Concept is not null)
-        {
-            score += 700;
-            reasons.Add("Mismo concepto: +700");
-        }
-
-        // 6. CATEGORÍAS
-        var categoryMatch = product.CategoriesStore.Any(category => NormalizerService.ContainsTerm(category, product.Normalized.Query));
+        
+        // 4. CATEGORÍAS
+        var categoryMatch = product.CategoriesStore.Any(category => NormalizerService.ContainsTerm(category, normalizedQuery));
         if (categoryMatch)
         {
             score += 300;
             reasons.Add("Coincidencia de categoría: +300");
         }
 
-        // 7. MARCA
-        var brandMatch = product.Normalized.Brand.Equals(product.Normalized.Query, StringComparison.Ordinal);
+        // 5. MARCA
+        var brandMatch = !string.IsNullOrWhiteSpace(normalizedBrand) && normalizedBrand.Equals(normalizedQuery, StringComparison.Ordinal);
         if (brandMatch)
         {
             score += 500;
             reasons.Add("Coincidencia exacta de marca: +500");
         }
 
-        // 8. COBERTURA DE TOKENS
+        // 6. COBERTURA DE TOKENS
         var tokenCoverage = CalculateTokenCoverage(query, product);
         score += tokenCoverage * 300;
 
@@ -84,9 +80,9 @@ public sealed class RankedService : IRankedService, ITransientDependency
             reasons.Add($"Cobertura de términos: {NormalizerService.JavaScriptRound(tokenCoverage * 100)}%");
         }
 
-        // 9. POSICIÓN DEL PRIMER TÉRMINO
-        var queryTokens = NormalizerService.Tokenize(product.Normalized.Query);
-        var nameTokens = NormalizerService.Tokenize(product.Normalized.Name);
+        // 7. POSICIÓN DEL PRIMER TÉRMINO
+        var queryTokens = NormalizerService.Tokenize(normalizedQuery);
+        var nameTokens = NormalizerService.Tokenize(normalizedName);
         if (queryTokens.Length > 0)
         {
             var firstTokenIndex = Array.FindIndex(nameTokens, token => token.Equals(queryTokens[0], StringComparison.Ordinal));
@@ -106,14 +102,14 @@ public sealed class RankedService : IRankedService, ITransientDependency
             }
         }
 
-        if (string.IsNullOrWhiteSpace(product.Clasification?.SubtypeName))
+        if (string.IsNullOrWhiteSpace(product.Classification?.Concept))
         {
             score = 0;
         }
         
         var finalScore = NormalizerService.JavaScriptRound(score);
         var debug = new ProductScoreDebug(
-                    ProductConcept: product.Clasification?.Concept,
+                    ProductConcept: product.Classification?.Concept,
                     ExactName: exactName,
                     StartsWithQuery: startsWithQuery,
                     ContainsQuery: containsQuery,

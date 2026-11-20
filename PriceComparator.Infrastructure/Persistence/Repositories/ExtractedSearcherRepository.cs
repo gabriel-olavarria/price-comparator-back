@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using PriceComparator.Application.DTOs.Extractions;
 using PriceComparator.Application.Interfaces.Persistence;
 using PriceComparator.Application.Interfaces.Repositories;
 using PriceComparator.Domain.Entities;
@@ -9,21 +8,18 @@ using PriceComparator.Infrastructure.Persistence.Contexts;
 
 namespace PriceComparator.Infrastructure.Persistence.Repositories;
 
-public sealed class ExtractedSearcherRepository(
+public sealed class ExtractedSearchRepository(
     PriceComparatorDbContext context,
     IUnitOfWork unitOfWork,
-    ILogger<ExtractedSearcherRepository> logger)
+    ILogger<ExtractedSearchRepository> logger)
     :
         Repository<ExtractedSearch, long>(context),
-        IExtractedSearcherRepository
+        IExtractedSearchRepository
 {
-    private static readonly TimeZoneInfo ChileTimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/Santiago");
-    private readonly ILogger<ExtractedSearcherRepository> _logger = logger;
-
     public async Task<ExtractedSearch?> FindByStoreAndQueryAsync(string store, string query, CancellationToken cancellationToken = default)
     {
         
-        return await context.Set<ExtractedSearch>()
+        return await Entities
             .FirstOrDefaultAsync(x =>
                     x.Store == store &&
                     x.SearchQuery == query ,

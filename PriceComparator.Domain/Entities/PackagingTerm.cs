@@ -9,4 +9,8 @@ public sealed class PackagingTerm : Entity<long>
     public long PackagingId { get; set; }
 
     public Packaging Packaging { get; set; } = null!;
+    
+    public ICollection<PackagingTermAlias> Aliases { get; set; } = new List<PackagingTermAlias>();
+    
+    public List<Rules> Rules { get; set; } = [];
 }

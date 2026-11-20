@@ -20,9 +20,10 @@ public sealed class Product
     public string? CanonicalName { get; set; }
     public double Score { get; set; } = 0;
     public Normalized? Normalized { get; set; }
-    public Clasification? Clasification { get; set; }
-
-    public Product(string name, decimal price, Store store, Uri productUrl, Uri? imageUrl = null, string? brand = null, string? sellerName = null, IReadOnlyCollection<string>? categoriesStore  = null, string? availability = null) {
+    public Classification? Classification { get; set; }
+    public string? Slug { get; set; }
+    
+    public Product(string name, decimal price, Store store, Uri productUrl, Uri? imageUrl = null, string? brand = null, string? sellerName = null, IReadOnlyCollection<string>? categoriesStore  = null, string? availability = null, string? slug = null) {
        
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -39,9 +40,10 @@ public sealed class Product
         Store = store ?? throw new ArgumentNullException(nameof(store));
         ProductUrl = productUrl ?? throw new ArgumentNullException(nameof(productUrl));
         ImageUrl = imageUrl;
-        Brand = NormalizerService.NormalizeOptionalText(brand);
+        Brand = brand;
         SellerName = NormalizerService.NormalizeOptionalText(sellerName);
         Availability = NormalizerService.NormalizeOptionalText(availability);
         CategoriesStore =  NormalizerService.NormalizeCategories(categoriesStore);
+        Slug = NormalizerService.NormalizeOptionalText(slug);
     }
 }

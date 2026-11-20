@@ -80,10 +80,10 @@ public static class ConceptSeed
             var concept = context.Set<Concept>()
                 .Single(x => x.Name == conceptName);
 
-            if (!context.Set<Aliases>()
+            if (!context.Set<ConceptTerm>()
                     .Any(x => x.Name == name && x.ConceptId == concept.Id))
             {
-                context.Set<Aliases>().Add(new Aliases
+                context.Set<ConceptTerm>().Add(new ConceptTerm
                 {
                     Name = name,
                     ConceptId = concept.Id
@@ -107,7 +107,11 @@ public static class ConceptSeed
             ("Pregraneado", "Arroz"),
             ("Grado 1", "Arroz"),
             ("Grado 2", "Arroz"),
-            ("Especial", "Arroz")
+            ("Especial", "Arroz"),
+            ("Original", "Bebida"),
+            ("Zero", "Bebida"),
+            ("Light", "Bebida"),
+            ("Sin Azúcar", "Bebida")
         };
 
         foreach (var (name, conceptName) in subtypes)
@@ -150,9 +154,17 @@ public static class ConceptSeed
             ("sushi", "Preparado", "Arroz"),
             ("wok", "Preparado", "Arroz"),
             ("risotto", "Preparado", "Arroz"),
-
+            ("chaufán", "Preparado", "Arroz"),
+            ("árabe", "Preparado", "Arroz"),
+            
             ("basmati", "Especial", "Arroz"),
-            ("jazmin", "Especial", "Arroz")
+            ("jazmin", "Especial", "Arroz"),
+            
+            ("original", "Original", "Bebida"),
+            ("sabor original", "Original", "Bebida"),
+            ("zero", "Zero", "Bebida"),
+            ("light", "Light", "Bebida")
+
         };
 
         foreach (var (name, subtypeName, conceptName) in terms)
@@ -162,10 +174,10 @@ public static class ConceptSeed
                     x.Name == subtypeName &&
                     x.Concept.Name == conceptName);
 
-            if (!context.Set<Term>()
+            if (!context.Set<SubtypeTerm>()
                     .Any(x => x.Name == name && x.SubtypeId == subtype.Id))
             {
-                context.Set<Term>().Add(new Term
+                context.Set<SubtypeTerm>().Add(new SubtypeTerm
                 {
                     Name = name,
                     SubtypeId = subtype.Id

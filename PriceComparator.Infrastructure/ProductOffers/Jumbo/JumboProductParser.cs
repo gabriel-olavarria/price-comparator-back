@@ -186,16 +186,20 @@ public sealed class JumboProductParser : ISingletonDependency
         {
             return null;
         }
-
+        
+        string? slug = null;
+        if (TryGetString(product, "slug", out var productSlug))
+        {
+            slug = productSlug;
+        }
+        
         Uri? imageUrl = null;
-
         if (TryGetString(product, "image", out var imageUrlText))
         {
             Uri.TryCreate(imageUrlText, UriKind.Absolute, out imageUrl);
         }
 
         string? brand = null;
-
         if (product.TryGetProperty("brand", out var brandElement) && brandElement.ValueKind == JsonValueKind.Object &&
             TryGetString(brandElement, "name", out var brandName))
         {
@@ -270,12 +274,8 @@ public sealed class JumboProductParser : ISingletonDependency
             return "[]";
 
         var htmlParser = new HtmlParser();
-        var document = await htmlParser.ParseDocumentAsync(
-            html,
-            cancellationToken);
-
+        var document = await htmlParser.ParseDocumentAsync(html, cancellationToken);
         var categoriesByUrl = GetCategoriesByProductUrl(document);
-
         var products = new JsonArray();
         var productIds = new HashSet<string>();
 

@@ -1,13 +1,13 @@
 
 using System.Net;
-using Microsoft.EntityFrameworkCore;
+using System.Net.Security;
+using System.Security.Authentication;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using PriceComparator.Application.Interfaces.DependencyInjection;
 using PriceComparator.Application.Interfaces.Persistence;
 using PriceComparator.Application.Interfaces.Repositories;
 using PriceComparator.Application.Interfaces.Services;
-using PriceComparator.Domain.Common;
 using PriceComparator.Infrastructure.Persistence;
 using PriceComparator.Infrastructure.Persistence.Configurations;
 using PriceComparator.Infrastructure.Persistence.Contexts;
@@ -67,6 +67,37 @@ public static class DependencyInjection
         
         services.AddHttpClient<AcuentaProductOfferSearcher>(
             client => ConfigureHttpClient(client, "https://www.acuenta.cl"));
+        
+        services.AddHttpClient("Geoapify", client =>
+        {
+            client.BaseAddress = new Uri("https://api.geoapify.com/");
+            client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+            client.Timeout = TimeSpan.FromSeconds(20);
+        });
+        
+   
+
+        
+        services.AddHttpClient("OSRM", client =>
+        {
+            client.BaseAddress = new Uri("https://router.project-osrm.org/");
+            client.Timeout = TimeSpan.FromSeconds(30);
+
+            client.DefaultRequestVersion = HttpVersion.Version20;
+            client.DefaultVersionPolicy =
+                HttpVersionPolicy.RequestVersionOrLower;
+
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("curl/8.7.1");
+            client.DefaultRequestHeaders.Accept.ParseAdd("*/*");
+        });
+
+
+        
+        services.AddHttpClient("ConsumoVehicular", client =>
+        {
+            client.BaseAddress = new Uri("https://api-consumovehicular.minenergia.cl/");
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
     }
 
     private static void ConfigureHttpClient(HttpClient client, string baseAddress)

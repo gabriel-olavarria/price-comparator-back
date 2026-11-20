@@ -11,9 +11,7 @@ public sealed class LiderProductParser : ISingletonDependency
 {
     private static readonly Uri BaseUri = new("https://super.lider.cl");
 
-    public (string RawJson, IReadOnlyCollection<Product> Products) ParseGraphQL(
-        string json,
-        CancellationToken cancellationToken = default)
+    public (string RawJson, IReadOnlyCollection<Product> Products) ParseGraphQL(string json, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
 
@@ -78,6 +76,7 @@ public sealed class LiderProductParser : ISingletonDependency
     {
         var name = GetString(item, "name");
         var url = GetUri(item, "canonicalUrl");
+        var slug = url?.ToString().Trim('/').Split('/')[^2];
 
         if (string.IsNullOrWhiteSpace(name) || url is null)
             return null;
@@ -113,7 +112,8 @@ public sealed class LiderProductParser : ISingletonDependency
             brand: GetString(item, "brand"),
             sellerName: GetString(item, "sellerName"),
             categoriesStore: GetCategories(item),
-            availability: GetAvailability(item));
+            availability: GetAvailability(item),
+            slug);
     }
 
     private static bool IsSponsored(JsonElement stack)

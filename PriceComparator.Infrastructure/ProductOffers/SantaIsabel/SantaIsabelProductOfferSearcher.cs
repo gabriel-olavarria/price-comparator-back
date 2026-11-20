@@ -1,12 +1,9 @@
-using System.Text.Json;
-using PriceComparator.Application.DTOs.Extractions;
 using PriceComparator.Application.Interfaces.DependencyInjection;
 using PriceComparator.Application.Interfaces.Repositories;
 using PriceComparator.Application.Interfaces.Services;
 using PriceComparator.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PriceComparator.Application.Interfaces.Persistence;
 using PriceComparator.Infrastructure.Persistence.Configurations;
 
 namespace PriceComparator.Infrastructure.ProductOffers.SantaIsabel;
@@ -14,11 +11,10 @@ namespace PriceComparator.Infrastructure.ProductOffers.SantaIsabel;
 public sealed class SantaIsabelProductOfferSearcher(
     HttpClient httpClient,
     SantaIsabelProductParser parser,
-    IExtractedSearcherRepository extractedSearcherRepository,
+    IExtractedSearchRepository extractedSearchRepository,
     IProcessedSearchRepository processedSearchRepository,
     ILogger<SantaIsabelProductOfferSearcher> logger,
-    IOptions<SupermarketExtractionOptions> options,
-    IUnitOfWork unitOfWork)
+    IOptions<SupermarketExtractionOptions> options)
     : IProductOfferSearcher, ITransientDependency
 {
     public string StoreCode => "SantaIsabel";
@@ -51,6 +47,7 @@ public sealed class SantaIsabelProductOfferSearcher(
         await SaveExtracted(rawJson, normalizedQuery, cancellationToken);
 
         var offers = await parser.ParseAsync(html, cancellationToken);
+        
         Console.WriteLine($"[SANTA ISABEL] Productos encontrados: {offers.Count}");
 
         return (offers, false);
@@ -71,11 +68,10 @@ public sealed class SantaIsabelProductOfferSearcher(
 
     public async Task SaveExtracted(string rawJson, string normalizedQuery, CancellationToken cancellationToken)
     {
-        await extractedSearcherRepository.SaveExtractedAsync(StoreCode, normalizedQuery, rawJson, cancellationToken);
+        await extractedSearchRepository.SaveExtractedAsync(StoreCode, normalizedQuery, rawJson, cancellationToken);
     }
 
-    public async Task SaveProcessed(IReadOnlyCollection<Product> products, string query,
-        CancellationToken cancellationToken = default)
+    public async Task SaveProcessed(IReadOnlyCollection<Product> products, string query, CancellationToken cancellationToken = default)
     {
         await processedSearchRepository.SaveProcessedAsync(StoreCode, query, products, cancellationToken);
     }
