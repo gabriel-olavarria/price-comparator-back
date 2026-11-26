@@ -1,5 +1,6 @@
 using PriceComparator.Api.Configurations;
 using PriceComparator.Api.Diagnostics;
+using PriceComparator.Api.Security;
 using PriceComparator.Api.Filters;
 using PriceComparator.Application;
 using PriceComparator.Infrastructure;
@@ -52,6 +53,9 @@ builder.Services.AddInfrastructure(builder.Configuration);
 // ======================================================
 
 builder.Services.AddApiExceptionHandling();
+builder.Services.Configure<MobileClientOptions>(
+    builder.Configuration.GetSection(MobileClientOptions.SectionName));
+builder.Services.AddSingleton<MobileClientKeyValidator>();
 builder.Services.AddApiCors(builder.Configuration);
 builder.Services.AddApiRateLimiting();
 builder.Host.UseDefaultServiceProvider((context, options) =>

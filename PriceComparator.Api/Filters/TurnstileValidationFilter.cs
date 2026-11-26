@@ -1,24 +1,42 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using PriceComparator.Api.Security;
 using PriceComparator.Application.Interfaces.Services;
 
 namespace PriceComparator.Api.Filters;
 
 public sealed class TurnstileValidationFilter(
     ITurnstileVerificationService verificationService,
-    IWebHostEnvironment environment
+    MobileClientKeyValidator mobileClientKeyValidator,
+    IWebHostEnvironment environment,
+    ILogger<TurnstileValidationFilter> logger
     ) : IAsyncActionFilter
 {
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
-        // Permitir solicitudes locales en Development.
+        var request = context.HttpContext.Request;
+
+        if (mobileClientKeyValidator.HasProvidedKey(request))
+        {
+            if (mobileClientKeyValidator.IsValid(request))
+            {
+                await next();
+                return;
+            }
+
+            logger.LogWarning("Clave de la app mobile rechazada.");
+            context.Result = CreateForbiddenResult("La clave de la aplicación es inválida.");
+            return;
+        }
+
+        // La web local no envía clave ni token de Turnstile.
         if (environment.IsDevelopment())
         {
             await next();
             return;
         }
-        
-        var token = context.HttpContext.Request.Headers["X-Turnstile-Token"].ToString();
+
+        var token = request.Headers["X-Turnstile-Token"].ToString();
 
         if (string.IsNullOrWhiteSpace(token))
         {
