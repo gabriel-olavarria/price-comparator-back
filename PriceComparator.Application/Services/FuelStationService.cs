@@ -16,6 +16,8 @@ public sealed class FuelStationService(
     IOsrmService osrmService
 ) : IFuelStationService, ISingletonDependency
 {
+    private static readonly string[] RequiredFuelCodes = ["93", "95", "97", "DI"];
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -56,6 +58,11 @@ public sealed class FuelStationService(
             .ToList();
         
         List<CneFuelStationDto> stations = stationsByCommune
+            .Where(station =>
+                station.TryGetProperty("precios", out var prices) &&
+                prices.ValueKind == JsonValueKind.Object &&
+                RequiredFuelCodes.All(code =>
+                    prices.TryGetProperty(code, out var fuel) && fuel.ValueKind == JsonValueKind.Object))
             .Select(station => new CneFuelStationDto
             {
                 Codigo = station.GetProperty("codigo").GetString(),
