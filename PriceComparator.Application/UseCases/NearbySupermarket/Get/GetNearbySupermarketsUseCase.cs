@@ -5,7 +5,8 @@ using PriceComparator.Application.Interfaces.Services;
 namespace PriceComparator.Application.UseCases.NearbySupermarket.Get;
 
 public sealed class GetNearbySupermarketsUseCase(
-    IGeoapifyService geoapifyService
+    IGeoapifyService geoapifyService,
+    IFuelStationService  fuelStationService
 ) : IScopedDependency
 {
 
@@ -41,10 +42,7 @@ public sealed class GetNearbySupermarketsUseCase(
                 var longitude = coordinates[0];
                 var latitude = coordinates[1];
 
-                if (!double.IsFinite(latitude) ||
-                    !double.IsFinite(longitude) ||
-                    latitude is < -90 or > 90 ||
-                    longitude is < -180 or > 180)
+                if (!double.IsFinite(latitude) || !double.IsFinite(longitude) || latitude is < -90 or > 90 || longitude is < -180 or > 180)
                 {
                     return null;
                 }
@@ -68,10 +66,20 @@ public sealed class GetNearbySupermarketsUseCase(
             .Select(group => group.MinBy(item => item!.Distance)!.Supermarket)
             .OrderBy(item => item.Distance)
             .ToArray();
+        
+        
+        // 6. Calcular el recorrido por carretera.
+        var route = await fuelStationService.CalculateRouteAsync(
+            request.Latitude,
+            request.Longitude,
+            nearestByStore,
+            cancellationToken);
+        
 
         return new NearbySupermarketsResponse
         {
-            NearestByStore = nearestByStore
+            NearestByStore = nearestByStore, 
+            RouteResult = route
         };
     }
     private static bool MatchesStore(string? value, string storeKey)

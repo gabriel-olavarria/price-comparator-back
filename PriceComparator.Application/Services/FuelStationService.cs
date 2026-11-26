@@ -22,7 +22,7 @@ public sealed class FuelStationService(
     };
 
     // 1. Obtener listado completo de estaciones CNE
-    public async Task<List<CneFuelStationDto>> GetListFuels(string token, CancellationToken cancellationToken)
+    public async Task<List<CneFuelStationDto>> GetListFuels(string token, CancellationToken cancellationToken, string comuna, string region)
     {
         var stationsUrl = configuration["Cne:StationsUrl"];
 
@@ -42,75 +42,85 @@ public sealed class FuelStationService(
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
 
-        var stations = await JsonSerializer.DeserializeAsync<List<CneFuelStationDto>>(stream, JsonOptions, cancellationToken);
-
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+     
+        // Filtrar por región.
+        List<JsonElement> stationsByRegion = document.RootElement
+            .EnumerateArray()
+            .Where(station => string.Equals(station.GetProperty("ubicacion").GetProperty("nombre_region").GetString(), region, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        
+        // Filtrar por comuna dentro de la región.
+        List<JsonElement> stationsByCommune = stationsByRegion
+            .Where(station => string.Equals(station.GetProperty("ubicacion").GetProperty("nombre_comuna").GetString(), comuna, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        
+        List<CneFuelStationDto> stations = stationsByCommune
+            .Select(station => new CneFuelStationDto
+            {
+                Codigo = station.GetProperty("codigo").GetString(),
+                Distribuidor = new CneDistributorDto
+                {
+                    Marca = station.GetProperty("distribuidor").GetProperty("marca").GetString(),
+                    Logo = station.GetProperty("distribuidor").GetProperty("logo").GetString()
+                },
+                Ubicacion= new CneLocationDto
+                {
+                    NombreRegion =  station.GetProperty("ubicacion").GetProperty("nombre_region").GetString(),
+                    NombreComuna =  station.GetProperty("ubicacion").GetProperty("nombre_comuna").GetString(),
+                    Direccion =  station.GetProperty("ubicacion").GetProperty("direccion").GetString(), 
+                    Latitud = double.Parse(station.GetProperty("ubicacion").GetProperty("latitud").GetString()!, CultureInfo.InvariantCulture),
+                    Longitud = double.Parse(station.GetProperty("ubicacion").GetProperty("longitud").GetString()!, CultureInfo.InvariantCulture)
+                },
+                Combustibles = station.GetProperty("precios").EnumerateObject().ToDictionary(fuel => fuel.Name, fuel => new CneFuelDto
+                {
+                    Combustible = fuel.Name,
+                    PrecioLitro = double.TryParse(fuel.Value.GetProperty("precio").GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var precio)
+                        ? precio
+                        : null,
+                    FechaActualizacion = fuel.Value.GetProperty("fecha_actualizacion").GetString()
+                })
+            }).ToList();
+       
         logger.LogInformation("CNE devolvió {Count} estaciones de servicio.", stations?.Count ?? 0);
+       
         return stations ?? [];
     }
-
-    // 2. Filtrar estaciones por región y comuna
-    public Task<List<CneFuelStationDto>> GetListFuelsByLocation(List<CneFuelStationDto> stations, string region, string comuna, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var result = stations
-            .Where(station =>
-            {
-                var ubicacion = station.Ubicacion;
-
-                return ubicacion is not null &&
-                       string.Equals(ubicacion.NombreRegion?.Trim(), region.Replace("Región", "").Replace("de", "").Trim(), StringComparison.OrdinalIgnoreCase) &&
-                       string.Equals(ubicacion.NombreComuna?.Trim(), comuna.Trim(), StringComparison.OrdinalIgnoreCase);
-            })
-            .ToList();
-
-        logger.LogInformation("Se encontraron {Count} estaciones en {Comuna}, {Region}.", result.Count, comuna, region);
-        return Task.FromResult(result);
-    }
-
+    
     // 3. Identificar estación más cercana al domicilio
-    public NearestFuelStationDto? GetNearestFuelStation(List<CneFuelStationDto> stations, double latitude, double longitude)
+    public CneFuelStationDto? GetNearestFuelStation(List<CneFuelStationDto> stations, double latitude, double longitude)
     {
         var nearest = stations
             .Select(station =>
             {
                 var ubicacion = station.Ubicacion;
-
-                if (ubicacion is null || 
-                    !double.TryParse(ubicacion.Latitud, NumberStyles.Float, CultureInfo.InvariantCulture, out var stationLatitude) ||
-                    !double.TryParse(ubicacion.Longitud, NumberStyles.Float, CultureInfo.InvariantCulture, out var stationLongitude))
+                double latitude2 = 0;
+                double longitude2 = 0;
+                
+                if (ubicacion != null)
                 {
-                    return new
-                    {
-                        Station = station,
-                        DistanceKm = (double?)null
-                    };
+                    latitude2 = ubicacion.Latitud!.Value;
+                    longitude2 = ubicacion.Longitud!.Value;
                 }
 
-                var distance = CalculateDistanceKm(latitude, longitude, stationLatitude, stationLongitude);
-
+                var distance = CalculateDistanceKm(latitude, longitude, latitude2, longitude2);
+                station.DistanceToUserKm = distance;
                 return new
                 {
                     Station = station,
-                    DistanceKm = (double?)distance
                 };
+           
+                
             })
-            .Where(item => item.DistanceKm.HasValue)
-            .OrderBy(item => item.DistanceKm)
+            .OrderBy(item => item.Station.DistanceToUserKm)
             .FirstOrDefault();
 
-        // Pattern matching: valida el objeto y extrae el double.
-        if (nearest is not { DistanceKm: double distanceKm })
+        if (nearest is null)
         {
             return null;
         }
 
-        return new NearestFuelStationDto
-        {
-            Station = nearest.Station,
-            DistanceKm = Math.Round(distanceKm, 2),
-            Precios = MapFuelPrices(nearest.Station.Precios)
-        };
+        return nearest.Station;
     }
 
 
@@ -193,73 +203,23 @@ public sealed class FuelStationService(
 
 
     // 5. Calcular gasto estimado de combustible
-    public FuelCostDto CalculateFuelCost(double distanceKm, decimal fuelPrice, decimal fuelEfficiencyKmPerLiter)
+    public decimal CalculateFuelCost(double distanceKm, decimal fuelPrice, decimal fuelEfficiencyKmPerLiter)
     {
-        if (distanceKm < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(distanceKm));
-        }
-
-        if (fuelPrice <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(fuelPrice));
-        }
-
-        if (fuelEfficiencyKmPerLiter <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(fuelEfficiencyKmPerLiter));
-        }
-
         var liters = (decimal)distanceKm / fuelEfficiencyKmPerLiter;
         var estimatedCost = liters * fuelPrice;
 
-        return new FuelCostDto
-        {
-            DistanceKm = distanceKm,
-            FuelPrice = fuelPrice,
-            FuelEfficiencyKmPerLiter = fuelEfficiencyKmPerLiter,
-            EstimatedLiters = Math.Round(liters, 4),
-            EstimatedCost = Math.Round(estimatedCost, 0, MidpointRounding.AwayFromZero)
-        };
+        return estimatedCost;
     }
-
-    // 6. Convertir los precios de combustible CNE
-    private static FuelPricesDto MapFuelPrices(Dictionary<string, CneFuelPriceDto>? prices)
+    public FuelConsumptionDto CalculateFuelConsumption(double distanceKm, decimal fuelEfficiencyKmPerLiter)
     {
-        return new FuelPricesDto
+        var liters = (decimal)distanceKm / fuelEfficiencyKmPerLiter;
+
+        return new FuelConsumptionDto
         {
-            Gasolina93 = MapFuelPrice(prices, "93"),
-            Gasolina95 = MapFuelPrice(prices, "95"),
-            Gasolina97 = MapFuelPrice(prices, "97"),
-            Diesel = MapFuelPrice(prices, "DI")
+            ConsumptionValue = liters < 1m ? liters * 1000m : liters,
+            ConsumptionUnit = liters < 1m ? "ml" : "L"
         };
     }
-
-    private static FuelPriceDto? MapFuelPrice(Dictionary<string, CneFuelPriceDto>? prices, string fuelType)
-    {
-        if (prices is null || 
-            !prices.TryGetValue(fuelType, out var fuel) ||
-            fuel is null ||
-            !decimal.TryParse(fuel.Precio, NumberStyles.Number, CultureInfo.InvariantCulture, out var price) ||
-            price <= 0)
-        {
-            return null;
-        }
-
-        DateOnly? updatedAt = null;
-
-        if (DateOnly.TryParseExact(fuel.FechaActualizacion, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate))
-        {
-            updatedAt = parsedDate;
-        }
-
-        return new FuelPriceDto
-        {
-            Precio = price,
-            FechaActualizacion = updatedAt
-        };
-    }
-
     // 7. Distancia geográfica mediante Haversine
     private static double CalculateDistanceKm(double latitude1, double longitude1, double latitude2, double longitude2)
     {
@@ -274,9 +234,11 @@ public sealed class FuelStationService(
             Math.Cos(ToRadians(latitude2)) *
             Math.Pow(Math.Sin(longitudeDifference / 2), 2);
 
+        a = Math.Clamp(a, 0.0, 1.0);
+
         var c = 2 * Math.Atan2(
             Math.Sqrt(a),
-            Math.Sqrt(Math.Max(0, 1 - a)));
+            Math.Sqrt(1 - a));
 
         return earthRadiusKm * c;
     }
@@ -285,4 +247,5 @@ public sealed class FuelStationService(
     {
         return degrees * Math.PI / 180.0;
     }
+    
 }

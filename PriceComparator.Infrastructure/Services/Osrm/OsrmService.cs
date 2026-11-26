@@ -16,18 +16,14 @@ public sealed class OsrmService(
     private const string BaseUrl =
         "https://router.project-osrm.org/route/v1/driving";
 
-    public async Task<OsrmResponseDto> GetRouteAsync(
-        IReadOnlyList<OsrmRequestDto> points,
-        CancellationToken cancellationToken)
+    public async Task<OsrmResponseDto> GetRouteAsync(IReadOnlyList<OsrmRequestDto> points, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(points);
 
         // Cada solicitud representa un único tramo.
         if (points.Count != 2)
         {
-            throw new ArgumentException(
-                "Se requieren exactamente dos coordenadas por tramo.",
-                nameof(points));
+            throw new ArgumentException("Se requieren exactamente dos coordenadas por tramo.", nameof(points));
         }
 
         // OSRM requiere longitud,latitud.
@@ -46,19 +42,13 @@ public sealed class OsrmService(
 
         var client = httpClientFactory.CreateClient("OSRM");
 
-        using var response = await client.GetAsync(
-            url,
-            cancellationToken);
+        using var response = await client.GetAsync(url, cancellationToken);
 
         response.EnsureSuccessStatusCode();
 
-        await using var stream =
-            await response.Content.ReadAsStreamAsync(
-                cancellationToken);
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
 
-        using var document = await JsonDocument.ParseAsync(
-            stream,
-            cancellationToken: cancellationToken);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
 
         var root = document.RootElement;
 

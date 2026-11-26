@@ -10,63 +10,41 @@ public sealed class GetFuelByLocationUseCase(
     IConsumoVehicularService consumoVehicularService
 ) : IScopedDependency
 {
-    public async Task<GetFuelByLocationResponse> ExecuteAsync(GetFuelByLocationRequest request, CancellationToken cancellationToken)
+    public async Task<GetFuelByLocationResponse> ExecuteAsync(FuelCalculationRequest request, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(request);
-
-        cancellationToken.ThrowIfCancellationRequested();
-
         // 1. Obtener token de autenticación CNE
         var token = await cneAuthService.GetToken(cancellationToken);
         
         // 2. Obtener listado de estaciones de combustible
-        List<CneFuelStationDto> stations = await fuelStationService.GetListFuels(token, cancellationToken);
-
-        // 3. Filtrar estaciones por región y comuna del usuario
-        List<CneFuelStationDto> stationsByLocation = await fuelStationService.GetListFuelsByLocation(stations, request.Region, request.Comuna, cancellationToken);
-
-        // 4. Identificar estación más cercana al domicilio
-        var nearestStation = fuelStationService.GetNearestFuelStation(stationsByLocation, request.Latitud, request.Longitud);
-
-        // 5. Calcula recorrido total por tramos sobre la ruta
-        var route = await fuelStationService.CalculateRouteAsync(request.Latitud, request.Longitud, request.Supermercados, cancellationToken);
+        List<CneFuelStationDto> stations = await fuelStationService.GetListFuels(token, cancellationToken, request.UserLocation.Comuna, request.UserLocation.Region);
         
-        //6. Obtener caracteristicas del vehiculo del usuario para obtener el redimiento
-       // var vehicleResponse = await consumoVehicularService.GetVehiclesAsync(request.UserVehicleRequest!, cancellationToken);
-       // var vehicle = vehicleResponse.Items.FirstOrDefault();
-        //decimal? efficiencyKmPerLiter = vehicle?.RendimientoMixto;
-        
-        // 7. Calcular gasto estimado de combustible
-        FuelCostDto? fuelCost = null;
+        // 3. Identificar estación más cercana al domicilio
+        var nearestStation = fuelStationService.GetNearestFuelStation(stations, request.UserLocation.Latitud, request.UserLocation.Longitud);
 
-        if (nearestStation is not null && request.RendimientoMixto is > 0)
+        // 4. Calcular gasto estimado de combustible
+        var combustibles = nearestStation.Combustibles;
+
+        foreach (var combustible in combustibles)
         {
-            var selectedFuelType = request.TipoCombustible
-                .Trim()
-                .ToUpperInvariant();
-
-            decimal? pricePerLiter = selectedFuelType switch
+            if (combustible.Value.PrecioLitro is null)
             {
-                "93" => nearestStation.Precios.Gasolina93?.Precio,
-                "95" => nearestStation.Precios.Gasolina95?.Precio,
-                "97" => nearestStation.Precios.Gasolina97?.Precio,
-                "DI" or "DIESEL" => nearestStation.Precios.Diesel?.Precio,
-                _ => null
-            };
-
-            if (pricePerLiter is > 0 && request.RendimientoMixto is > 0)
-            {
-                fuelCost = fuelStationService.CalculateFuelCost(route.TotalDistanceKm, pricePerLiter.Value, request.RendimientoMixto);
-       
+                continue;
             }
-        }
+            decimal precio = (decimal)combustible.Value.PrecioLitro;
+            combustible.Value.PrecioDistancia = fuelStationService.CalculateFuelCost(request.Tramo.TotalDistanceKm, precio, request.RendimientoMixto);
 
-        // 8. Construir respuesta final
+        }
+        
+        // 5. Calcular el consumo estimado de gasolina
+        var consumeComsumtion = fuelStationService.CalculateFuelConsumption(request.Tramo.TotalDistanceKm, request.RendimientoMixto);
+        
+        // 6. Construir respuesta final
         return new GetFuelByLocationResponse
         {
-            EstacionCercana = nearestStation,
-            Recorrido = route,
-            GastoEstimado = fuelCost
+            Station = nearestStation,
+            TotalDistanceRouteKm = request.Tramo.TotalDistanceKm,
+            ConsumptionValue = consumeComsumtion.ConsumptionValue,
+            ConsumptionUnit = consumeComsumtion.ConsumptionUnit
         };
     }
 }

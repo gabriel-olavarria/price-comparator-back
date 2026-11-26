@@ -4,8 +4,7 @@ namespace PriceComparator.Api.Configurations;
 
 public static class ExceptionHandlingConfiguration
 {
-    public static IServiceCollection AddApiExceptionHandling(
-        this IServiceCollection services)
+    public static IServiceCollection AddApiExceptionHandling(this IServiceCollection services)
     {
         services.AddExceptionHandler<ApiExceptionHandler>();
 
@@ -15,11 +14,9 @@ public static class ExceptionHandlingConfiguration
             {
                 var problem = context.ProblemDetails;
 
-                problem.Instance ??=
-                    context.HttpContext.Request.Path;
+                problem.Instance ??= context.HttpContext.Request.Path;
 
-                problem.Extensions["traceId"] =
-                    context.HttpContext.TraceIdentifier;
+                problem.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
 
                 if (problem.Status == StatusCodes.Status500InternalServerError)
                 {

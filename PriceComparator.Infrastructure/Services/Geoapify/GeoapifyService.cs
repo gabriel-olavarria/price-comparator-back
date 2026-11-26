@@ -19,7 +19,7 @@ public sealed class GeoapifyService(
     private const string PlacesEndpoint = "v2/places";
     private const int PageSize = 20;
     private const string ReverseGeocodingEndpoint = "v1/geocode/reverse";
-    
+    private const string AutocompleteEndpoint = "v1/geocode/autocomplete";
 
     public async Task<string> GetCommunePlaceIdAsync(double latitude, double longitude, CancellationToken cancellationToken)
     {
@@ -237,5 +237,101 @@ public sealed class GeoapifyService(
             .Where(item => item.ValueKind == JsonValueKind.String)
             .Select(item => item.GetString()!)
             .ToList();
+    }
+    
+    public async Task<IReadOnlyList<AddressSuggestionDto>> AutocompleteAddressAsync(string text, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return [];
+        }
+
+        var apiKey = configuration["Geoapify:ApiKey"];
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new InvalidOperationException(
+                "No se configuró Geoapify:ApiKey.");
+        }
+
+        var query = new Dictionary<string, string>
+        {
+            ["text"] = text.Trim(),
+            ["filter"] = "countrycode:cl",
+            ["lang"] = "es",
+            ["limit"] = "5",
+            ["format"] = "json",
+            ["apiKey"] = apiKey
+        };
+
+        var queryString = string.Join("&", query.Select(item =>
+            $"{Uri.EscapeDataString(item.Key)}=" +
+            $"{Uri.EscapeDataString(item.Value)}"));
+
+        try
+        {
+            var client = httpClientFactory.CreateClient(ClientName);
+
+            using var response = await client.GetAsync(
+                $"{AutocompleteEndpoint}?{queryString}",
+                cancellationToken);
+
+            response.EnsureSuccessStatusCode();
+
+            await using var stream = await response.Content
+                .ReadAsStreamAsync(cancellationToken);
+
+            using var document = await JsonDocument.ParseAsync(
+                stream,
+                cancellationToken: cancellationToken);
+
+            if (!document.RootElement.TryGetProperty(
+                    "results", out var results) ||
+                results.ValueKind != JsonValueKind.Array)
+            {
+                throw new JsonException(
+                    "Geoapify no devolvió resultados válidos.");
+            }
+
+            return results.EnumerateArray()
+                .Select(item => new AddressSuggestionDto
+                {
+                    PlaceId = GetString(item, "place_id"),
+                    Formatted = GetString(item, "formatted"),
+                    Street = GetString(item, "street"),
+                    HouseNumber = GetString(item, "housenumber"),
+                    City = GetString(item, "city"),
+                    State = GetString(item, "state"),
+                    Country = GetString(item, "country"),
+                    Latitude = GetNumber(item, "lat") ?? 0,
+                    Longitude = GetNumber(item, "lon") ?? 0
+                })
+                .Where(item =>
+                    double.IsFinite(item.Latitude) &&
+                    double.IsFinite(item.Longitude) &&
+                    item.Latitude is >= -90 and <= 90 &&
+                    item.Longitude is >= -180 and <= 180 &&
+                    (item.Latitude != 0 || item.Longitude != 0))
+                .ToList();
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+            when (ex is HttpRequestException or
+                  JsonException or
+                  OperationCanceledException)
+        {
+            logger.LogError(
+                ex,
+                "No fue posible consultar direcciones en Geoapify.");
+
+            throw new HttpRequestException(
+                "El servicio de búsqueda de direcciones no está disponible.",
+                ex,
+                HttpStatusCode.ServiceUnavailable);
+        }
     }
 }

@@ -30,9 +30,9 @@ public class FuelStationsController(
         return getConsumeVehicleUseCase.ExecuteAsync(request, cancellationToken);
     }
     
-    [EnableRateLimiting(RateLimitingConfiguration.ProductSearch)]
+ 
     [HttpPost("calculate")]
-    public Task<GetFuelByLocationResponse> Calculate([FromBody] GetFuelByLocationRequest request, CancellationToken cancellationToken)
+    public Task<GetFuelByLocationResponse> Calculate([FromBody] FuelCalculationRequest request, CancellationToken cancellationToken)
     {
         return getFuelByLocationUseCase.ExecuteAsync(request, cancellationToken);
     }

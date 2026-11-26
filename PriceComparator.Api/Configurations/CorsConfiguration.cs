@@ -4,13 +4,9 @@ public static class CorsConfiguration
 {
     public const string Frontend = "frontend";
 
-    public static IServiceCollection AddApiCors(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddApiCors(this IServiceCollection services, IConfiguration configuration)
     {
-        var origins = configuration
-            .GetSection("Cors:AllowedOrigins")
-            .Get<string[]>() ?? [];
+        var origins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 
         services.AddCors(options =>
         {
