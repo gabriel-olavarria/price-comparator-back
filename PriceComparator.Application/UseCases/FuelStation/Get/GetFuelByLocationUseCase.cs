@@ -18,30 +18,26 @@ public sealed class GetFuelByLocationUseCase(
         // 2. Obtener listado de estaciones de combustible
         List<CneFuelStationDto> stations = await fuelStationService.GetListFuels(token, cancellationToken, request.UserLocation.Comuna, request.UserLocation.Region);
         
-        // 3. Identificar estación más cercana al domicilio
-        var nearestStation = fuelStationService.GetNearestFuelStation(stations, request.UserLocation.Latitud, request.UserLocation.Longitud);
+        // 3. Identificar las estaciones más cercanas al domicilio distinguidas por marca
+        var nearestStations = fuelStationService.GetNearestFuelStationsByBrand(stations, request.UserLocation.Latitud, request.UserLocation.Longitud);
 
-        // 4. Calcular gasto estimado de combustible
-        var combustibles = nearestStation.Combustibles;
-
-        foreach (var combustible in combustibles)
+        // 4. Calcular gasto estimado de combustible para cada estación 
+        foreach (var combustible in nearestStations.SelectMany(station => station.Combustibles.Values))
         {
-            if (combustible.Value.PrecioLitro is null)
+            if (combustible.PrecioLitro is { } precio)
             {
-                continue;
+                combustible.PrecioDistancia = fuelStationService.CalculateFuelCost(request.Tramo.TotalDistanceKm, (decimal)precio, request.RendimientoMixto);
             }
-            decimal precio = (decimal)combustible.Value.PrecioLitro;
-            combustible.Value.PrecioDistancia = fuelStationService.CalculateFuelCost(request.Tramo.TotalDistanceKm, precio, request.RendimientoMixto);
-
         }
-        
+
         // 5. Calcular el consumo estimado de gasolina
         var consumeComsumtion = fuelStationService.CalculateFuelConsumption(request.Tramo.TotalDistanceKm, request.RendimientoMixto);
         
         // 6. Construir respuesta final
         return new GetFuelByLocationResponse
         {
-            Station = nearestStation,
+            Station = nearestStations.FirstOrDefault(),
+            NearestStations = nearestStations,
             TotalDistanceRouteKm = request.Tramo.TotalDistanceKm,
             ConsumptionValue = consumeComsumtion.ConsumptionValue,
             ConsumptionUnit = consumeComsumtion.ConsumptionUnit

@@ -22,3 +22,21 @@ Accept: application/json
 # Ejemplo: Bebidas
 GET {{host}}/api/product-offers/search?categories=Bebidas
 ###
+
+### CALCULAR COSTO DE COMBUSTIBLE EN LA ESTACIÓN MÁS CERCANA DE CADA MARCA
+POST {{host}}/api/fuels/calculate
+Content-Type: application/json
+Accept: application/json
+
+{
+  "userLocation": {
+    "latitud": -33.4489,
+    "longitud": -70.6693,
+    "comuna": "Copiapó",
+    "region": "Atacama"
+  },
+  "tramo": {
+    "totalDistanceKm": 12.5
+  },
+  "rendimientoMixto": 14.2
+}

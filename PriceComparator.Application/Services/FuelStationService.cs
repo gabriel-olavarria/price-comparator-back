@@ -87,42 +87,24 @@ public sealed class FuelStationService(
         return stations ?? [];
     }
     
-    // 3. Identificar estación más cercana al domicilio
-    public CneFuelStationDto? GetNearestFuelStation(List<CneFuelStationDto> stations, double latitude, double longitude)
+    public List<CneFuelStationDto> GetNearestFuelStationsByBrand(List<CneFuelStationDto> stations, double latitude, double longitude)
     {
-        var nearest = stations
-            .Select(station =>
-            {
-                var ubicacion = station.Ubicacion;
-                double latitude2 = 0;
-                double longitude2 = 0;
-                
-                if (ubicacion != null)
-                {
-                    latitude2 = ubicacion.Latitud!.Value;
-                    longitude2 = ubicacion.Longitud!.Value;
-                }
+        var stationsWithLocation = stations
+            .Where(station => station.Ubicacion is { Latitud: not null, Longitud: not null })
+            .ToList();
 
-                var distance = CalculateDistanceKm(latitude, longitude, latitude2, longitude2);
-                station.DistanceToUserKm = distance;
-                return new
-                {
-                    Station = station,
-                };
-           
-                
-            })
-            .OrderBy(item => item.Station.DistanceToUserKm)
-            .FirstOrDefault();
-
-        if (nearest is null)
+        foreach (var station in stationsWithLocation)
         {
-            return null;
+            var location = station.Ubicacion!;
+            station.DistanceToUserKm = CalculateDistanceKm(latitude, longitude, location.Latitud!.Value, location.Longitud!.Value);
         }
 
-        return nearest.Station;
+        return stationsWithLocation
+            .Where(station => !string.IsNullOrWhiteSpace(station.Distribuidor?.Marca))
+            .OrderBy(station => station.DistanceToUserKm)
+            .DistinctBy(station => station.Distribuidor!.Marca!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
-
 
     public async Task<RouteDto> CalculateRouteAsync(double homeLatitude, double homeLongitude, IReadOnlyList<FeatureResultDto> supermarkets, CancellationToken cancellationToken)
     {
